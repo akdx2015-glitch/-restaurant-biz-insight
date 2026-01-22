@@ -1,0 +1,10 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[dev]
+  command = "npm run dev"
+  port = 5173
+
+[build.environment]
+  NODE_OPTIONS = "--max_old_space_size=4096"

@@ -1,0 +1,12 @@
+﻿                        const getCatColor = (name: string) => {
+                            if (name.includes('?명뀛')) return '#8b5cf6'; // Purple for Hotels
+                            if (name.includes('?몃뵒利?)) return '#3b82f6'; // Blue
+                            if (name === '諛곕?' || name === '諛곕떖?섎?議?) return '#10b981'; // Green
+                            if (name === '荑좏뙜' || name === '荑좏뙜?댁툩') return '#f59e0b'; // Amber
+                            if (name === '?꾩옣' || name === '?뚰겕??) return '#f43f5e'; // Rose
+
+                            // Use index from all clients for consistent coloring across components
+                            const allNames = summaryPieData.map(d => d.name);
+                            const idx = allNames.indexOf(name);
+                            return COLORS[idx % COLORS.length] || '#6366f1';
+                        };
