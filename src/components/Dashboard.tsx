@@ -548,8 +548,18 @@ export function Dashboard({ data, startDate }: DashboardProps) {
                                         content={({ active, payload, label }) => {
                                             if (active && payload && payload.length) {
                                                 return (
-                                                    <div className="bg-white p-3 rounded-xl shadow-xl border-0">
-                                                        <p className="text-black font-extrabold text-base mb-2 border-b border-slate-100 pb-1" style={{ color: 'black' }}>{label}</p>
+                                                    <div className="bg-white p-3 rounded-xl shadow-xl border border-slate-200" style={{ backgroundColor: 'white' }}>
+                                                        <p className="custom-tooltip-label mb-2 border-b border-slate-100 pb-1"
+                                                            style={{
+                                                                color: '#000000',
+                                                                fontSize: '16px',
+                                                                fontWeight: '900',
+                                                                textShadow: 'none',
+                                                                margin: 0,
+                                                                paddingBottom: '4px'
+                                                            }}>
+                                                            {label}
+                                                        </p>
                                                         {payload.map((entry: any, index: number) => (
                                                             <p key={index} style={{ color: entry.color }} className="text-sm font-bold my-1 flex justify-between gap-4">
                                                                 <span>{entry.name} :</span>
