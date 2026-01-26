@@ -545,15 +545,25 @@ export function Dashboard({ data, startDate }: DashboardProps) {
                                         tickFormatter={(val) => `${val.toLocaleString()}만`}
                                     />
                                     <Tooltip
-                                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
-                                        labelStyle={{ color: '#000000', fontWeight: 'bold' }}
-                                        formatter={(_val: any, name: any, props: any) => {
-                                            const d = props?.payload;
-                                            if (d) {
-                                                if (name === "총 매출") return d.rawRevenue;
-                                                if (name === "총 지출") return d.rawExpense;
+                                        content={({ active, payload, label }) => {
+                                            if (active && payload && payload.length) {
+                                                return (
+                                                    <div className="bg-white p-3 rounded-xl shadow-xl border-0">
+                                                        <p className="text-black font-extrabold text-base mb-2 border-b border-slate-100 pb-1">{label}</p>
+                                                        {payload.map((entry: any, index: number) => (
+                                                            <p key={index} style={{ color: entry.color }} className="text-sm font-bold my-1 flex justify-between gap-4">
+                                                                <span>{entry.name} :</span>
+                                                                <span>
+                                                                    {entry.name === "총 매출" ? entry.payload.rawRevenue :
+                                                                        entry.name === "총 지출" ? entry.payload.rawExpense :
+                                                                            entry.value}
+                                                                </span>
+                                                            </p>
+                                                        ))}
+                                                    </div>
+                                                );
                                             }
-                                            return _val;
+                                            return null;
                                         }}
                                     />
                                     {isDaily && (peakRev > 200 || peakExp > 200) && (
