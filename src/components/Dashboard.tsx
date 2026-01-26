@@ -549,7 +549,7 @@ export function Dashboard({ data, startDate }: DashboardProps) {
                                             if (active && payload && payload.length) {
                                                 return (
                                                     <div className="bg-white p-3 rounded-xl shadow-xl border-0">
-                                                        <p className="text-black font-extrabold text-base mb-2 border-b border-slate-100 pb-1">{label}</p>
+                                                        <p className="text-black font-extrabold text-base mb-2 border-b border-slate-100 pb-1" style={{ color: 'black' }}>{label}</p>
                                                         {payload.map((entry: any, index: number) => (
                                                             <p key={index} style={{ color: entry.color }} className="text-sm font-bold my-1 flex justify-between gap-4">
                                                                 <span>{entry.name} :</span>
