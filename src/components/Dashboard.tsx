@@ -520,7 +520,7 @@ export function Dashboard({ data, startDate }: DashboardProps) {
                         <div className="flex items-center justify-between mb-8 border-b border-slate-50 pb-4">
                             <div className="flex items-center gap-2">
                                 <div className="p-2 bg-blue-50 rounded-lg text-blue-600"><LineIcon size={18} /></div>
-                                <h4 className="font-bold text-slate-800 text-base">{isDaily ? '일별' : '월별'} 매출/지출 (v2)</h4>
+                                <h4 className="font-bold text-slate-800 text-base">{isDaily ? '일별' : '월별'} 매출/지출</h4>
                             </div>
                             <button
                                 onClick={() => handleCaptureChart('chart-trend-analysis', '추이 분석')}
