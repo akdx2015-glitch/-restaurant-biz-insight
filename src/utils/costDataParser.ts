@@ -263,11 +263,22 @@ export const convertIngredientToCostPurchase = (data: IngredientData[]): CostPur
     return data.map(item => {
         let majorCategory: '식자재' | '생활용품' | '운용용품' | '반려동물' | '기타' | '차량용품' = '식자재';
 
-        // 카테고리 매핑 (개선됨)
+        // 카테고리 매핑 (개선됨: 품명 + 카테고리 모두 검색)
         const category = item.category || '';
-        const supplyKeywords = ['공산품', '생활용품', '소모품', '주방용품', '잡화', '비품', '포장', '용기', '세제', '위생'];
+        const name = item.name || '';
 
-        if (supplyKeywords.some(keyword => category.includes(keyword))) {
+        // 검색 대상 문자열 (카테고리 + 품명)
+        const targetString = `${category} ${name}`;
+
+        const supplyKeywords = [
+            '공산품', '생활용품', '소모품', '주방용품', '잡화', '비품', '포장', '용기',
+            '세제', '위생', '타올', '티슈', '휴지', '장갑', '봉투', '호일', '랩',
+            '수세미', '부탄', '가스', '세정', '락스', '행주', '컵', '빨대', '캐리어',
+            '홀더', '유산지', '이쑤시개', '철수세미', '마스크', '앞치마', '세탁',
+            '린스', '샴푸', '비누', '치약', '칫솔', '테이프', '박스', '일회용'
+        ];
+
+        if (supplyKeywords.some(keyword => targetString.includes(keyword))) {
             majorCategory = '운용용품';
         } else if (category === '기타') {
             majorCategory = '기타';
