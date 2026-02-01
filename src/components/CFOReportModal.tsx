@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect } from 'react';
-import { X, Copy, FileText, Check, GripVertical } from 'lucide-react';
+import { X, Copy, FileText, Check, GripVertical, FileDown } from 'lucide-react';
 import type { RevenueData, IngredientData } from '../types';
 import { getCostType } from '../utils/costUtils';
+import { exportToJsxWord } from '../utils/docxGenerator';
 
 interface CFOReportModalProps {
     isOpen: boolean;
@@ -170,6 +171,16 @@ export function CFOReportModal({ isOpen, onClose, revenueData, ingredientData, s
         }
     };
 
+    const handleExportWord = async () => {
+        const fileName = `[CFO_Report]_${startDate}_${endDate || 'monthly'}.docx`;
+        try {
+            await exportToJsxWord(reportMarkdown, fileName);
+        } catch (error) {
+            console.error('Word export failed:', error);
+            alert('Word 문서 생성 중 오류가 발생했습니다.');
+        }
+    };
+
     if (!isOpen || !reportInfo) return null;
     const {
         dateRangeText, overallStatus, flRatio, flStatus, primeCost, bep, bepReached, revPerHead,
@@ -220,6 +231,14 @@ export function CFOReportModal({ isOpen, onClose, revenueData, ingredientData, s
                         >
                             {copied ? <Check size={18} /> : <Copy size={18} />}
                             {copied ? '복사됨' : '복사하기'}
+                        </button>
+
+                        <button
+                            onClick={handleExportWord}
+                            className="flex items-center gap-2 px-4 py-2 bg-[#2B579A] hover:bg-[#1E3F72] rounded font-medium text-sm transition-all text-white shadow-sm"
+                        >
+                            <FileDown size={18} />
+                            Word 저장
                         </button>
 
                         <button onClick={onClose} className="p-2 hover:bg-[#F1F3F4] rounded-full text-[#5F6368] transition-colors">
