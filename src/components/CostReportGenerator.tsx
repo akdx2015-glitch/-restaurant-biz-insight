@@ -294,24 +294,7 @@ ${vendors.slice(0, 5).map((v, idx) =>
             reportContent += `  ${idx + 1}. **${item.품명}** (${item.수량}개) - 재고 회전율 관리 필요\n`;
         });
 
-        // 운영용품 리스트
-        if (supplyItems.length > 0) {
-            reportContent += `- **운영용품 분류 (Non-Food):**\n`;
-            const supplySummary = supplyItems.reduce((acc, item) => {
-                const name = item.품명;
-                if (!acc[name]) acc[name] = 0;
-                acc[name] += (item['합계금액'] || 0);
-                return acc;
-            }, {} as Record<string, number>);
 
-            // 금액 높은 운영용품 5개만 표시
-            Object.entries(supplySummary)
-                .sort((a: any, b: any) => b[1] - a[1])
-                .slice(0, 5)
-                .forEach(([name, amount]) => {
-                    reportContent += `  - ${name}: ₩${amount.toLocaleString()} (소모품/운영자재)\n`;
-                });
-        }
 
         reportContent += `\n---\n*데이터 기간: ${dateRangeText} | 자동 생성된 보고서입니다.*`;
 

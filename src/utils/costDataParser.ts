@@ -263,10 +263,13 @@ export const convertIngredientToCostPurchase = (data: IngredientData[]): CostPur
     return data.map(item => {
         let majorCategory: '식자재' | '생활용품' | '운용용품' | '반려동물' | '기타' | '차량용품' = '식자재';
 
-        // 카테고리 매핑
-        if (item.category === '공산품') {
+        // 카테고리 매핑 (개선됨)
+        const category = item.category || '';
+        const supplyKeywords = ['공산품', '생활용품', '소모품', '주방용품', '잡화', '비품', '포장', '용기', '세제', '위생'];
+
+        if (supplyKeywords.some(keyword => category.includes(keyword))) {
             majorCategory = '운용용품';
-        } else if (item.category === '기타') {
+        } else if (category === '기타') {
             majorCategory = '기타';
         } else {
             // 채소, 육류, 해산물, 주류/음료 등은 모두 식자재로 분류
