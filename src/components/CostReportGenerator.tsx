@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FileBarChart, Copy, RefreshCw, Calendar, ListFilter, Briefcase } from 'lucide-react';
+import { FileBarChart, Copy, RefreshCw, Calendar, ListFilter, Briefcase, Upload, FileUp } from 'lucide-react';
 import type { CostPurchaseData } from '../types';
 import {
     loadCostMasterData,
@@ -9,6 +9,7 @@ import {
     analyzePriceTrends,
     analyzeByVendor,
     classifyByCostType,
+    parseCostDataFromFile
 } from '../utils/costDataParser';
 
 interface CostReportGeneratorProps {
@@ -23,26 +24,37 @@ export function CostReportGenerator({ startDate, endDate }: CostReportGeneratorP
     const dateRangeText = startDate && endDate ? `${startDate} ~ ${endDate}` : (startDate ? `${startDate} 이후` : '전체 기간');
 
     const [report, setReport] = useState('');
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
-    // 데이터 로드
-    useEffect(() => {
-        const loadData = async () => {
-            try {
-                setLoading(true);
-                const data = await loadCostMasterData();
-                setCostData(data);
-                setError('');
-            } catch (err) {
-                setError('데이터 로드에 실패했습니다.');
-                console.error(err);
-            } finally {
-                setLoading(false);
-            }
-        };
+    // 파일 업로드 핸들러
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
 
-        loadData();
+        try {
+            setLoading(true);
+            setError('');
+            const data = await parseCostDataFromFile(file);
+            if (data.length === 0) {
+                setError('데이터를 찾을 수 없습니다.');
+            } else {
+                setCostData(data);
+                // 업로드 성공 시 리포트 초기화
+                setReport('');
+            }
+        } catch (err) {
+            console.error(err);
+            setError('파일을 읽는 중 오류가 발생했습니다. 올바른 엑셀 파일인지 확인해주세요.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // 초기 데이터 로드 (선택 사항: 예제 데이터 로드하고 싶으면 주석 해제)
+    useEffect(() => {
+        // 기본적으로는 빈 상태로 두고 사용자가 업로드하도록 유도
+        // 원한다면 loadCostMasterData()를 호출하여 샘플 데이터 로드 가능
     }, []);
 
     // 기본 보고서 생성
@@ -446,9 +458,37 @@ ${vendors.slice(0, 5).map((v, idx) =>
         return (
             <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
                 <p className="text-red-600 font-medium">{error}</p>
-                <p className="text-sm text-red-500 mt-2">
-                    Excel 파일이 올바른 위치에 있는지 확인해주세요.
-                </p>
+            </div>
+        );
+    }
+
+    if (costData.length === 0 && !loading) {
+        return (
+            <div className="space-y-6 animate-in fade-in slide-in-from-top-4 duration-500">
+                <div className="bg-slate-900 p-8 rounded-2xl shadow-sm border border-slate-800 text-center">
+                    <div className="inline-flex p-4 bg-slate-800 rounded-full mb-4">
+                        <FileUp size={32} className="text-slate-400" />
+                    </div>
+                    <h2 className="text-xl font-bold text-white mb-2">원가/식자재 상세 분석을 시작하세요</h2>
+                    <p className="text-slate-400 mb-6 max-w-md mx-auto">
+                        품명, 규격, 수량, 단가가 포함된 <strong>상세 매입 엑셀 파일</strong>을 업로드하면<br />
+                        식자재 소분류 분석, 가격 변동 추이, 운용용품 절감 리포트를 생성해드립니다.
+                    </p>
+                    <div className="relative inline-block">
+                        <input
+                            type="file"
+                            accept=".xlsx, .xls"
+                            onChange={handleFileUpload}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                        />
+                        <button
+                            className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-base font-bold transition-all shadow-lg hover:shadow-blue-500/25 flex items-center gap-2"
+                        >
+                            <Upload size={20} />
+                            엑셀 파일 업로드하기
+                        </button>
+                    </div>
+                </div>
             </div>
         );
     }
@@ -465,12 +505,30 @@ ${vendors.slice(0, 5).map((v, idx) =>
                         <div>
                             <h2 className="text-xl font-bold text-white">원가/식자재 상세 분석 보고서</h2>
                             <p className="text-sm text-slate-400">
-                                {startDate ? `${dateRangeText} 분석` : '분석 기간을 설정해주세요'} | 총 {costData.length}건
+                                {costData.length > 0
+                                    ? `총 ${costData.length}건 데이터 로드됨 | ${startDate ? dateRangeText : '전체 기간'}`
+                                    : '분석할 엑셀 파일(매입 명세서)을 업로드해주세요'}
                             </p>
                         </div>
                     </div>
-                    {/* 버튼 그룹을 상단 우측으로 이동 */}
+                    {/* 버튼 그룹 */}
                     <div className="flex items-center gap-2">
+                        <div className="relative">
+                            <input
+                                type="file"
+                                accept=".xlsx, .xls"
+                                onChange={handleFileUpload}
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                title="원가 상세 엑셀 파일 업로드"
+                            />
+                            <button
+                                className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2 border border-slate-600"
+                            >
+                                <Upload size={16} />
+                                파일 업로드
+                            </button>
+                        </div>
+
                         <button
                             onClick={generateReport}
                             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
