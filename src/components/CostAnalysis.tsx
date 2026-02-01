@@ -38,7 +38,7 @@ export function CostAnalysis({ data, startDate, endDate }: CostAnalysisProps) {
             {/* 원가 보고서 생성기 (독립 데이터 소스: cost_data.xlsx) */}
             <div className="bg-slate-900 p-1 rounded-2xl border border-slate-800">
                 <ErrorBoundary>
-                    <CostReportGenerator startDate={startDate} endDate={endDate} />
+                    <CostReportGenerator startDate={startDate} endDate={endDate} ingredientData={data} />
                 </ErrorBoundary>
             </div>
 
