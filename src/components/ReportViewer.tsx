@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Copy, RefreshCw, FileText, ChevronRight, ChevronLeft, Download, FileImage } from 'lucide-react';
+import { X, Copy, RefreshCw, FileText, ChevronRight, ChevronLeft, Download } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import type { RevenueData } from '../types';
 import { getCostType } from '../utils/costUtils';
@@ -17,6 +17,7 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
     const totalPages = 6;
 
     if (!isOpen) return null;
+    if (!data) return null;
 
     // === 데이터 분석 ===
     const totalRevenue = data.reduce((sum, d) => sum + d.revenue, 0);
@@ -668,7 +669,7 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
                             className="flex items-center gap-2 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded font-bold shadow-lg transition-all text-sm"
                             title="각 페이지를 이미지로 저장"
                         >
-                            <FileImage size={14} />
+                            <Download size={14} />
                             이미지
                         </button>
                         <button
