@@ -62,6 +62,23 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
         }, {} as Record<string, { name: string; value: number }>)
     ).sort((a, b) => b.value - a.value);
 
+    // === 날짜 및 기간 분석 ===
+    const sortedDates = dailyData.map(d => d.date).sort();
+    const minDate = sortedDates[0] || '';
+    const maxDate = sortedDates[sortedDates.length - 1] || '';
+
+    // 연도 추출 (YYYY-MM-DD 형식 가정)
+    const startYear = minDate.substring(0, 4);
+    const endYear = maxDate.substring(0, 4);
+    const reportYear = startYear === endYear ? startYear : `${startYear}~${endYear}`;
+    const currentYear = new Date().getFullYear();
+    const finalReportYear = reportYear || currentYear; // 데이터 없으면 현재 연도
+
+    // 실제 데이터 기반 표시 기간
+    const formattedDateRange = (dateRange === '전체 기간' && minDate && maxDate)
+        ? `${minDate} ~ ${maxDate}`
+        : dateRange;
+
     // === 고급 비용 분석 (costUtils 사용) ===
     let fixedCost = 0;
     let variableCost = 0;
@@ -243,8 +260,8 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
     <!-- 페이지 1: 경영 요약 -->
     <div style="padding: 20px 0;">
         <div style="text-align: center; margin-bottom: 40px;">
-            <h1 style="font-size: 24pt; border: none; margin-bottom: 10px;">📊 2024 경영 분석 리포트</h1>
-            <p style="font-size: 12pt; color: #64748b;">COSTAR FOOD ERP System | 분석 기간: ${dateRange}</p>
+            <h1 style="font-size: 24pt; border: none; margin-bottom: 10px;">📊 ${finalReportYear} 경영 분석 리포트</h1>
+            <p style="font-size: 12pt; color: #64748b;">COSTAR FOOD ERP System | 분석 기간: ${formattedDateRange}</p>
         </div>
         
         <div style="background: #f8fafc; padding: 25px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 30px;">
