@@ -2,6 +2,64 @@ import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, Width
 import { saveAs } from "file-saver";
 
 /**
+ * Parses markdown-like styling within a text string.
+ * Supports:
+ * - **bold**
+ * - _italic_
+ * - <br> or <br/> for line breaks
+ */
+const parseTextToRuns = (text: string, defaultProps: any = {}): TextRun[] => {
+    // 1. Split by <br>, <br/>, or <br />
+    const lines = text.split(/<br\s*\/?>/gi);
+    const runs: TextRun[] = [];
+
+    lines.forEach((line, lineIndex) => {
+        if (lineIndex > 0) {
+            // Add a line break before subsequent lines
+            runs.push(new TextRun({ text: "", break: 1 }));
+        }
+
+        // 2. Parse bold (**text**)
+        const boldParts = line.split(/(\*\*[^*]+\*\*)/g);
+
+        boldParts.forEach(boldPart => {
+            if (boldPart.startsWith('**') && boldPart.endsWith('**')) {
+                // This part is bold. Now parse italic inside it or just add it.
+                // Assuming simple nesting: **_italic_** or **text**
+                const content = boldPart.slice(2, -2);
+                runs.push(...parseItalic(content, { ...defaultProps, bold: true }));
+            } else {
+                // Not bold (or mixed). Parse italic.
+                runs.push(...parseItalic(boldPart, defaultProps));
+            }
+        });
+    });
+
+    return runs;
+};
+
+const parseItalic = (text: string, props: any): TextRun[] => {
+    // 3. Parse italic (_text_ or *text*)
+    // Note: markdown uses _ or * for italic. We'll stick to _ for now based on user data.
+    // Also handle possible single * if needed, but user data showed _text_.
+    const parts = text.split(/(_[^_]+_)/g);
+    return parts.map(part => {
+        if (part.startsWith('_') && part.endsWith('_')) {
+            return new TextRun({
+                text: part.slice(1, -1),
+                ...props,
+                italics: true
+            });
+        }
+        return new TextRun({
+            text: part,
+            ...props
+        });
+    });
+};
+
+
+/**
  * Markdown 텍스트를 분석하여 Word 문서 객체로 변환하고 다운로드합니다.
  * @param markdownContent 보고서 Markdown 텍스트
  * @param fileName 저장할 파일명
@@ -26,29 +84,42 @@ export const exportToJsxWord = async (markdownContent: string, fileName: string 
         }
 
         const rows = dataRows.map((line, rowIndex) => {
-            const cells = line.split('|').filter(cell => cell.trim() !== ''); // 빈 문자열 제거 (양 끝)
-            // If line started/ended with |, split might give empty first/last elements. 
-            // Better parsing:
+            // Split by | but handle escaped pipes if needed (not implemented here for simplicity)
+            // Using a simpler split that filters empty start/end
             const rawCells = line.split('|');
-            // Usually markdown tables have empty first and last split result if they start/end with |
             const tableCells = rawCells.slice(1, -1).map(c => c.trim());
 
             return new TableRow({
                 children: tableCells.map(cellText => {
+                    // Parse cell content for bold, italic, br
+                    const isHeader = rowIndex === 0;
+
+                    // Header default styling
+                    const cellParagraphs: Paragraph[] = [];
+
+                    // If text contains <br>, we might want separate paragraphs or just line breaks in one paragraph.
+                    // docx Paragraph supports children TextRuns which can have breaks.
+                    // Let's use one Paragraph per cell for now, unless complex.
+
+                    const runs = parseTextToRuns(cellText, {
+                        bold: isHeader,
+                        size: 20, // 10pt
+                    });
+
+                    cellParagraphs.push(new Paragraph({
+                        children: runs,
+                        alignment: AlignmentType.CENTER, // Default centering for table cells
+                        spacing: { before: 60, after: 60 } // Padding-like spacing
+                    }));
+
                     return new TableCell({
-                        children: [new Paragraph({
-                            children: [new TextRun({
-                                text: cellText,
-                                bold: rowIndex === 0, // Header bold
-                                size: 20, // 10pt
-                            })],
-                            alignment: AlignmentType.CENTER
-                        })],
+                        children: cellParagraphs,
                         width: {
                             size: 100 / tableCells.length,
                             type: WidthType.PERCENTAGE,
                         },
-                        shading: rowIndex === 0 ? { fill: "E0E0E0" } : undefined, // Header background
+                        shading: isHeader ? { fill: "E0E0E0" } : undefined, // Header background
+                        verticalAlign: AlignmentType.CENTER,
                     });
                 }),
             });
@@ -72,20 +143,6 @@ export const exportToJsxWord = async (markdownContent: string, fileName: string 
         tableBuffer = [];
     };
 
-    const parseLineToTextRuns = (text: string): TextRun[] => {
-        // Simple bold parser: **text**
-        const parts = text.split(/(\*\*[^*]+\*\*)/g);
-        return parts.map(part => {
-            if (part.startsWith('**') && part.endsWith('**')) {
-                return new TextRun({
-                    text: part.slice(2, -2),
-                    bold: true,
-                });
-            }
-            return new TextRun({ text: part });
-        });
-    };
-
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
 
@@ -103,8 +160,6 @@ export const exportToJsxWord = async (markdownContent: string, fileName: string 
         }
 
         if (line.startsWith('---')) {
-            // Horizontal rule -> maybe just a spacing or a border?
-            // docx doesn't exactly support hr in the same way, using a border bottom paragraph
             children.push(new Paragraph({
                 border: {
                     bottom: {
@@ -138,11 +193,17 @@ export const exportToJsxWord = async (markdownContent: string, fileName: string 
                 heading: HeadingLevel.HEADING_3,
                 spacing: { before: 200, after: 100 },
             }));
+        } else if (line.startsWith('#### ')) {
+            children.push(new Paragraph({
+                text: line.replace('#### ', ''),
+                heading: HeadingLevel.HEADING_4,
+                spacing: { before: 150, after: 100 },
+            }));
         }
         // List items
         else if (line.startsWith('- ')) {
             children.push(new Paragraph({
-                children: parseLineToTextRuns(line.replace('- ', '')),
+                children: parseTextToRuns(line.replace('- ', '')),
                 bullet: {
                     level: 0
                 }
@@ -150,17 +211,32 @@ export const exportToJsxWord = async (markdownContent: string, fileName: string 
         }
         else if (line.match(/^\d+\.\s/)) { // Numbered list
             children.push(new Paragraph({
-                children: parseLineToTextRuns(line.replace(/^\d+\.\s/, '')),
+                children: parseTextToRuns(line.replace(/^\d+\.\s/, '')),
                 numbering: {
                     reference: "default-numbering",
                     level: 0
                 }
             }));
         }
-        else {
-            // Normal paragraph
+        else if (line.startsWith('> ')) { // Blockquote
             children.push(new Paragraph({
-                children: parseLineToTextRuns(line),
+                children: parseTextToRuns(line.replace('> ', ''), { italics: true, color: "555555" }),
+                indent: { left: 720 }, // 0.5 inch
+                spacing: { before: 100, after: 100 },
+                border: {
+                    left: {
+                        color: "CCCCCC",
+                        space: 1,
+                        style: BorderStyle.SINGLE,
+                        size: 24, // 3pt
+                    }
+                }
+            }));
+        }
+        else {
+            // Normal paragraph with parsing
+            children.push(new Paragraph({
+                children: parseTextToRuns(line),
                 spacing: { after: 100 } // Line break
             }));
         }
