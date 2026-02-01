@@ -1,15 +1,13 @@
 import { useState, useEffect } from 'react';
-import { FileBarChart, Copy, RefreshCw, Calendar, ListFilter, Briefcase, Upload, FileUp } from 'lucide-react';
+import { FileBarChart, Copy, RefreshCw, Calendar, ListFilter, Briefcase } from 'lucide-react';
 import type { CostPurchaseData, IngredientData } from '../types';
 import {
-    loadCostMasterData,
     filterByMonth,
     filterByDateRange,
     analyzeByCostType,
     analyzePriceTrends,
     analyzeByVendor,
     classifyByCostType,
-    parseCostDataFromFile,
     convertIngredientToCostPurchase
 } from '../utils/costDataParser';
 
@@ -37,39 +35,16 @@ export function CostReportGenerator({ startDate, endDate, ingredientData }: Cost
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
-    // 파일 업로드 핸들러
-    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
 
-        try {
-            setLoading(true);
-            setError('');
-            const data = await parseCostDataFromFile(file);
-            if (data.length === 0) {
-                setError('데이터를 찾을 수 없습니다.');
-            } else {
-                setCostData(data);
-                // 업로드 성공 시 리포트 초기화
-                setReport('');
-            }
-        } catch (err) {
-            console.error(err);
-            setError('파일을 읽는 중 오류가 발생했습니다. 올바른 엑셀 파일인지 확인해주세요.');
-        } finally {
-            setLoading(false);
-        }
-    };
 
-    // 초기 데이터 로드 (선택 사항: 예제 데이터 로드하고 싶으면 주석 해제)
-    useEffect(() => {
-        // 기본적으로는 빈 상태로 두고 사용자가 업로드하도록 유도
-        // 원한다면 loadCostMasterData()를 호출하여 샘플 데이터 로드 가능
-    }, []);
+
 
     // 기본 보고서 생성
     const generateReport = () => {
-        if (!startDate || costData.length === 0) return;
+        if (!startDate || costData.length === 0) {
+            alert('분석할 데이터가 없습니다. 대시보드에서 엑셀 파일을 로드해주세요.');
+            return;
+        }
 
         let filtered = [];
         if (endDate) {
@@ -86,6 +61,7 @@ export function CostReportGenerator({ startDate, endDate, ingredientData }: Cost
         // 데이터가 없으면 리포트 초기화
         if (filtered.length === 0) {
             setReport('');
+            alert('해당 기간에 데이터가 없습니다.');
             return;
         }
 
@@ -213,7 +189,10 @@ ${vendors.slice(0, 5).map((v, idx) =>
 
     // 소분류별 가격순 정렬 보고서 생성
     const generateSortedReport = () => {
-        if (!startDate || costData.length === 0) return;
+        if (!startDate || costData.length === 0) {
+            alert('분석할 데이터가 없습니다.');
+            return;
+        }
 
         let filtered = [];
         if (endDate) {
@@ -225,6 +204,7 @@ ${vendors.slice(0, 5).map((v, idx) =>
 
         if (filtered.length === 0) {
             setReport('');
+            alert('해당 기간에 데이터가 없습니다.');
             return;
         }
 
@@ -340,7 +320,10 @@ ${vendors.slice(0, 5).map((v, idx) =>
 
     // 운용용품 상세 분석 보고서 생성
     const generateSupplyReport = () => {
-        if (!startDate || costData.length === 0) return;
+        if (!startDate || costData.length === 0) {
+            alert('분석할 데이터가 없습니다.');
+            return;
+        }
 
         let filtered = [];
         if (endDate) {
@@ -352,6 +335,7 @@ ${vendors.slice(0, 5).map((v, idx) =>
 
         if (filtered.length === 0) {
             setReport('');
+            alert('해당 기간에 데이터가 없습니다.');
             return;
         }
 
@@ -472,37 +456,6 @@ ${vendors.slice(0, 5).map((v, idx) =>
         );
     }
 
-    if (costData.length === 0 && !loading) {
-        return (
-            <div className="space-y-6 animate-in fade-in slide-in-from-top-4 duration-500">
-                <div className="bg-slate-900 p-8 rounded-2xl shadow-sm border border-slate-800 text-center">
-                    <div className="inline-flex p-4 bg-slate-800 rounded-full mb-4">
-                        <FileUp size={32} className="text-slate-400" />
-                    </div>
-                    <h2 className="text-xl font-bold text-white mb-2">원가/식자재 상세 분석을 시작하세요</h2>
-                    <p className="text-slate-400 mb-6 max-w-md mx-auto">
-                        품명, 규격, 수량, 단가가 포함된 <strong>상세 매입 엑셀 파일</strong>을 업로드하면<br />
-                        식자재 소분류 분석, 가격 변동 추이, 운용용품 절감 리포트를 생성해드립니다.
-                    </p>
-                    <div className="relative inline-block">
-                        <input
-                            type="file"
-                            accept=".xlsx, .xls"
-                            onChange={handleFileUpload}
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                        />
-                        <button
-                            className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-base font-bold transition-all shadow-lg hover:shadow-blue-500/25 flex items-center gap-2"
-                        >
-                            <Upload size={20} />
-                            엑셀 파일 업로드하기
-                        </button>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-top-4 duration-500">
             {/* 컨트롤 패널 */}
@@ -517,28 +470,12 @@ ${vendors.slice(0, 5).map((v, idx) =>
                             <p className="text-sm text-slate-400">
                                 {costData.length > 0
                                     ? `총 ${costData.length}건 데이터 로드됨 | ${startDate ? dateRangeText : '전체 기간'}`
-                                    : '분석할 엑셀 파일(매입 명세서)을 업로드해주세요'}
+                                    : '분석 데이터를 로드해주세요.'}
                             </p>
                         </div>
                     </div>
                     {/* 버튼 그룹 */}
                     <div className="flex items-center gap-2">
-                        <div className="relative">
-                            <input
-                                type="file"
-                                accept=".xlsx, .xls"
-                                onChange={handleFileUpload}
-                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                                title="원가 상세 엑셀 파일 업로드"
-                            />
-                            <button
-                                className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2 border border-slate-600"
-                            >
-                                <Upload size={16} />
-                                파일 업로드
-                            </button>
-                        </div>
-
                         <button
                             onClick={generateReport}
                             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
@@ -576,7 +513,6 @@ ${vendors.slice(0, 5).map((v, idx) =>
             </div>
 
             {/* 보고서 미리보기 */}
-            {/* 보고서 미리보기 */}
             {report && (
                 <div className="bg-slate-900 p-8 rounded-2xl shadow-sm border border-slate-800">
                     <div className="prose prose-invert max-w-none">
@@ -589,20 +525,17 @@ ${vendors.slice(0, 5).map((v, idx) =>
 
                                 const flushTable = () => {
                                     if (currentTable.length > 0) {
-                                        // Process table
                                         const headers = currentTable[0]
                                             .split('|')
                                             .map(s => s.trim())
                                             .filter(s => s !== '');
 
-                                        // Skip separator line (index 1) checks for alignment, but basic implementation here
                                         const rows = currentTable.slice(2).map(row =>
                                             row.split('|')
                                                 .map(s => s.trim())
-                                                .filter((_, idx) => idx > 0 && idx < row.split('|').length - 1) // Remove first/last empty from |...| format
+                                                .filter((_, idx) => idx > 0 && idx < row.split('|').length - 1)
                                         );
 
-                                        // Adjusted header cleaning locally
                                         const cleanHeaders = headers;
 
                                         blocks.push(
@@ -638,26 +571,22 @@ ${vendors.slice(0, 5).map((v, idx) =>
                                 lines.forEach((line, idx) => {
                                     const trimmed = line.trim();
 
-                                    // Table detection logic
                                     if (trimmed.startsWith('|')) {
                                         currentTable.push(trimmed);
                                     } else {
                                         flushTable();
 
-                                        // Normal rendering logic
                                         if (line.startsWith('## ')) {
                                             blocks.push(<h2 key={keyCounter++} className="text-2xl font-bold text-white mt-8 mb-4">{line.replace('## ', '')}</h2>);
                                         } else if (line.startsWith('### ')) {
                                             blocks.push(<h3 key={keyCounter++} className="text-xl font-bold text-slate-200 mt-6 mb-3">{line.replace('### ', '')}</h3>);
                                         } else if (line.startsWith('**') && line.endsWith('**')) {
-                                            // Whole line bold
                                             blocks.push(<p key={keyCounter++} className="font-bold text-slate-200 my-2">{line.replace(/\*\*/g, '')}</p>);
                                         } else if (line.startsWith('---')) {
                                             blocks.push(<hr key={keyCounter++} className="my-6 border-slate-700" />);
                                         } else if (trimmed === '') {
                                             blocks.push(<div key={keyCounter++} className="h-2"></div>);
                                         } else {
-                                            // Inline bold parsing
                                             const parts = line.split(/(\*\*[^*]+\*\*)/g);
                                             blocks.push(
                                                 <p key={keyCounter++} className="my-1 text-slate-300 text-sm leading-relaxed">
@@ -672,7 +601,7 @@ ${vendors.slice(0, 5).map((v, idx) =>
                                         }
                                     }
                                 });
-                                flushTable(); // Flush remaining table if any
+                                flushTable();
 
                                 return blocks;
                             })()}
@@ -683,3 +612,5 @@ ${vendors.slice(0, 5).map((v, idx) =>
         </div>
     );
 }
+
+
