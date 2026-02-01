@@ -51,6 +51,40 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
         }, {} as Record<string, { date: string; revenue: number; expense: number }>)
     ).sort((a, b) => a.date.localeCompare(b.date));
 
+    // 요일별 분석
+    const dayOfWeekData = data.reduce((acc, d) => {
+        const day = new Date(d.date).getDay(); // 0: Sun, 1: Mon, ...
+        const days = ['일', '월', '화', '수', '목', '금', '토'];
+        const dayName = days[day];
+        if (!acc[dayName]) acc[dayName] = { name: dayName, revenue: 0, expense: 0, count: 0 };
+        acc[dayName].revenue += d.revenue;
+        acc[dayName].expense += d.expense;
+        // 날짜별로 한번만 카운트하기 위해 별도 로직이 필요하지만, 여기서는 데이터 행 기준으로 근사치 혹은 
+        // dailyData를 기반으로 다시 집계하는 것이 정확함.
+        return acc;
+    }, {} as Record<string, { name: string; revenue: number; expense: number; count: number }>);
+
+    // dailyData 기반 요일별 재집계 (정확도 향상)
+    const dayAnalysis = dailyData.reduce((acc, d) => {
+        const dateObj = new Date(d.date);
+        const dayIndex = dateObj.getDay();
+        const days = ['일', '월', '화', '수', '목', '금', '토'];
+        const dayName = days[dayIndex];
+
+        if (!acc[dayName]) acc[dayName] = { name: dayName, revenue: 0, expense: 0, count: 0 };
+        acc[dayName].revenue += d.revenue;
+        acc[dayName].expense += d.expense;
+        acc[dayName].count += 1;
+        return acc;
+    }, {} as Record<string, { name: string; revenue: number; expense: number; count: number }>);
+
+    // 배열로 변환 및 정렬 (월~일 순서가 보기 좋음, 혹은 매출순)
+    const dayOrder = ['월', '화', '수', '목', '금', '토', '일'];
+    const daysSortedParams = dayOrder.map(day => dayAnalysis[day] || { name: day, revenue: 0, expense: 0, count: 0 });
+
+    // 가장 매출 높은 요일
+    const bestDay = [...daysSortedParams].sort((a, b) => b.revenue - a.revenue)[0];
+
     const maxDaily = Math.max(...dailyData.map(d => Math.max(d.revenue, d.expense)));
 
     const categoryExpenses = Object.values(
@@ -72,7 +106,7 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
     const endYear = maxDate.substring(0, 4);
     const reportYear = startYear === endYear ? startYear : `${startYear}~${endYear}`;
     const currentYear = new Date().getFullYear();
-    const finalReportYear = reportYear || currentYear; // 데이터 없으면 현재 연도
+    const finalReportYear = reportYear || currentYear;
 
     // 실제 데이터 기반 표시 기간
     const formattedDateRange = (dateRange === '전체 기간' && minDate && maxDate)
@@ -140,14 +174,17 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
     };
 
     const generateLineChart = (items: { date: string; revenue: number; expense: number }[], maxValue: number) => {
-        const chartItems = items.slice(-10);
+        const chartItems = items.slice(-10); // 최근 10일
         const chartWidth = 500;
-        const chartHeight = 120;
+        const chartHeight = 150;
         const padding = 20;
-        const barWidth = (chartWidth - padding * 2) / Math.max(chartItems.length, 1) / 2;
+        // Avoid division by zero
+        const effectiveMax = maxValue || 1;
+
+        const barWidth = (chartWidth - padding * 2) / Math.max(chartItems.length, 1) / 2.5;
 
         return `
-        <svg width="100%" height="${chartHeight + 40}" style="background: #f8fafc; border-radius: 8px; padding: 10px;">
+        <svg width="100%" height="${chartHeight + 50}" style="background: #f8fafc; border-radius: 8px; padding: 10px;">
             <!-- Grid lines -->
             ${[0, 25, 50, 75, 100].map(pct => `
                 <line x1="${padding}" y1="${chartHeight - (chartHeight * pct / 100)}" x2="${chartWidth}" y2="${chartHeight - (chartHeight * pct / 100)}" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="2,2"/>
@@ -155,13 +192,13 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
             
             <!-- Bars -->
             ${chartItems.map((item, idx) => {
-            const x = padding + idx * barWidth * 2;
-            const revenueH = maxValue > 0 ? (item.revenue / maxValue * (chartHeight - padding)) : 0;
-            const expenseH = maxValue > 0 ? (item.expense / maxValue * (chartHeight - padding)) : 0;
+            const x = padding + idx * barWidth * 2.5 + 10;
+            const revenueH = (item.revenue / effectiveMax * (chartHeight - padding));
+            const expenseH = (item.expense / effectiveMax * (chartHeight - padding));
             return `
-                    <rect x="${x}" y="${chartHeight - revenueH}" width="${barWidth - 2}" height="${revenueH}" fill="#22c55e" rx="2"/>
-                    <rect x="${x + barWidth}" y="${chartHeight - expenseH}" width="${barWidth - 2}" height="${expenseH}" fill="#ef4444" rx="2"/>
-                    <text x="${x + barWidth}" y="${chartHeight + 15}" font-size="7" fill="#64748b" text-anchor="middle" transform="rotate(-45 ${x + barWidth} ${chartHeight + 15})">${item.date.substring(5)}</text>
+                    <rect x="${x}" y="${chartHeight - revenueH}" width="${barWidth}" height="${revenueH}" fill="#22c55e" rx="2"/>
+                    <rect x="${x + barWidth + 2}" y="${chartHeight - expenseH}" width="${barWidth}" height="${expenseH}" fill="#ef4444" rx="2"/>
+                    <text x="${x + barWidth}" y="${chartHeight + 15}" font-size="8" fill="#64748b" text-anchor="middle" transform="rotate(-45 ${x + barWidth} ${chartHeight + 15})">${item.date.substring(5)}</text>
                 `;
         }).join('')}
             
@@ -170,6 +207,34 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
             <text x="${chartWidth - 85}" y="20" font-size="9" fill="#1f2937">매출</text>
             <rect x="${chartWidth - 100}" y="25" width="12" height="12" fill="#ef4444"/>
             <text x="${chartWidth - 85}" y="35" font-size="9" fill="#1f2937">지출</text>
+        </svg>
+        `;
+    };
+
+    const generateDayWeekChart = (items: { name: string; revenue: number; expense: number }[]) => {
+        const maxVal = Math.max(...items.map(i => Math.max(i.revenue, i.expense))) || 1;
+        const chartHeight = 120;
+        const barWidth = 15;
+        const gap = 30;
+
+        return `
+        <svg width="100%" height="${chartHeight + 40}" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px;">
+             ${items.map((item, idx) => {
+            const x = 30 + idx * gap * 1.5;
+            const revH = (item.revenue / maxVal) * chartHeight;
+            const expH = (item.expense / maxVal) * chartHeight;
+
+            return `
+                    <rect x="${x}" y="${chartHeight - revH}" width="${barWidth}" height="${revH}" fill="#22c55e" rx="2"/>
+                    <rect x="${x + 6}" y="${chartHeight - expH}" width="${barWidth}" height="${expH}" fill="#ef4444" fill-opacity="0.8" rx="2"/>
+                    <text x="${x + 10}" y="${chartHeight + 16}" font-size="9" fill="#334155" text-anchor="middle" font-weight="bold">${item.name}</text>
+                `;
+        }).join('')}
+             <!-- Simple Legend -->
+             <circle cx="200" cy="10" r="4" fill="#22c55e"/>
+             <text x="210" y="14" font-size="9" fill="#334155">매출</text>
+             <circle cx="250" cy="10" r="4" fill="#ef4444"/>
+             <text x="260" y="14" font-size="9" fill="#334155">지출</text>
         </svg>
         `;
     };
@@ -251,6 +316,8 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
         .page-break { page-break-after: always; }
         .footer { text-align: right; color: #94a3b8; margin-top: 30px; font-size: 8pt; border-top: 1px solid #e2e8f0; padding-top: 10px; }
         .chart-container { margin: 20px 0; padding: 10px; border: 1px solid #f1f5f9; border-radius: 8px; background: #fafafa; }
+        .flex-row { display: flex; gap: 20px; }
+        .flex-1 { flex: 1; }
         
         /* 테이블 스트라이프 */
         tr:nth-child(even) { background-color: #f8fafc; }
@@ -304,46 +371,40 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
                 <li><strong>손익분기점(BEP) 분석:</strong> 현재 매출은 손익분기점(${Math.round(bep).toLocaleString()}원)의 <strong>${bepReachedRatio.toFixed(1)}%</strong> 수준입니다. 
                     ${bepReachedRatio >= 100 ? '손익분기점을 초과하여 이익 구간에 진입했습니다.' : '아직 손익분기점에 도달하지 못했습니다. 매출 증대 혹은 고정비 절감이 필요합니다.'}</li>
                 <li><strong>FL Cost (식자재+인건비) 비중:</strong> <strong>${flRatio.toFixed(1)}%</strong>로, ${flRatio <= 65 ? '적정 수준(65% 이하)으로 잘 관리되고 있습니다.' : '적정 수준(65%)을 초과하여 수익성 개선을 위한 원가 및 인건비 관리가 요구됩니다.'}</li>
-                <li><strong>비용 구조:</strong> 고정비 비중이 <strong>${totalExpense > 0 ? ((fixedCost / totalExpense) * 100).toFixed(1) : 0}%</strong>, 변동비 비중이 <strong>${totalExpense > 0 ? ((variableCost / totalExpense) * 100).toFixed(1) : 0}%</strong>입니다.
-                    ${(fixedCost / totalExpense) > 0.4 ? '고정비 비중이 다소 높습니다. 매출 변동에 취약할 수 있으니 임대료, 통신비 등 고정 지출을 점검하세요.' : '비용 구조가 탄력적입니다.'}</li>
+                <li><strong>요일별 패턴:</strong> 매출이 가장 높은 요일은 <strong>${bestDay.name}요일</strong>이며, 평균 ${Math.round(bestDay.revenue / (bestDay.count || 1)).toLocaleString()}원의 매출을 기록했습니다.</li>
             </ul>
         </div>
     </div>
     <div class="footer">페이지 1 / ${totalPages}</div>
     <div class="page-break"></div>
 
-    <!-- 페이지 2: 일별 추이 차트 -->
-    <h1>📈 매출 및 지출 트렌드 분석</h1>
-    <p style="color: #64748b; margin-bottom: 20px;">최근 매출 흐름과 지출 패턴을 시각적으로 분석합니다.</p>
+    <!-- 페이지 2: 트렌드 및 요일 분석 -->
+    <h1>📈 매출 패턴 심층 분석</h1>
     
-    <h2>1. 최근 10일 추이</h2>
+    <h2>1. 일별 매출/지출 추이 (최근 10일)</h2>
     <div class="chart-container">
         ${generateLineChart(dailyData, maxDaily)}
     </div>
 
-    <h2>2. 일별 상세 데이터 목록</h2>
-    <table>
-        <thead>
-            <tr>
-                <th>날짜</th>
-                <th style="text-align: right;">매출 (원)</th>
-                <th style="text-align: right;">지출 (원)</th>
-                <th style="text-align: right;">순이익 (원)</th>
-                <th style="text-align: right;">이익률 (%)</th>
-            </tr>
-        </thead>
-        <tbody>
-            ${dailyData.map(d => `
-            <tr>
-                <td>${d.date}</td>
-                <td style="text-align: right; color: #16a34a; font-weight: bold;">${d.revenue.toLocaleString()}</td>
-                <td style="text-align: right; color: #dc2626; font-weight: bold;">${d.expense.toLocaleString()}</td>
-                <td style="text-align: right; font-weight: bold; ${(d.revenue - d.expense) >= 0 ? 'color: #16a34a;' : 'color: #dc2626;'}">${(d.revenue - d.expense).toLocaleString()}</td>
-                <td style="text-align: right;">${d.revenue > 0 ? (((d.revenue - d.expense) / d.revenue) * 100).toFixed(1) : 0}%</td>
-            </tr>
-            `).join('')}
-        </tbody>
-    </table>
+    <h2>2. 요일별 평균 실적 분석</h2>
+    <div class="flex-row">
+        <div class="flex-1">
+             <div class="chart-container">
+                ${generateDayWeekChart(daysSortedParams)}
+            </div>
+        </div>
+        <div class="flex-1" style="padding-left: 10px; font-size: 9pt;">
+             <h3>📅 요일별 인사이트</h3>
+             <ul style="line-height: 1.8; padding-left: 15px; color: #475569;">
+                ${daysSortedParams.map(d => `
+                    <li><strong>${d.name}요일:</strong> 매출 ${d.revenue.toLocaleString()}원 / 지출 ${d.expense.toLocaleString()}원</li>
+                `).join('')}
+             </ul>
+             <p style="margin-top: 10px; color: #2563eb;">
+                💡 <strong>${bestDay.name}요일</strong>에 마케팅이나 프로모션을 집중하여 매출 극대화를 노려보세요.
+             </p>
+        </div>
+    </div>
 
     <div class="footer">페이지 2 / ${totalPages}</div>
     <div class="page-break"></div>
