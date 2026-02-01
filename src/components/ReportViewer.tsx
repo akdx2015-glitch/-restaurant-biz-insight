@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { X, Copy, RefreshCw, FileText, ChevronRight, ChevronLeft, Download, FileImage } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import type { RevenueData } from '../types';
+import { getCostType } from '../utils/costUtils';
 
 interface ReportViewerProps {
     isOpen: boolean;
@@ -60,13 +61,42 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
         }, {} as Record<string, { name: string; value: number }>)
     ).sort((a, b) => b.value - a.value);
 
-    const variableCost = categoryExpenses.filter(c =>
-        ['식자재', '주류', '인건비', '수도광열', '운영용품', '배달'].some(k => c.name.includes(k))
-    ).reduce((sum, c) => sum + c.value, 0);
-    const fixedCost = categoryExpenses.filter(c =>
-        ['임대', '세금', '보험', '통신', '용역', '금융'].some(k => c.name.includes(k))
-    ).reduce((sum, c) => sum + c.value, 0);
-    const otherCost = totalExpense - variableCost - fixedCost;
+    // === 고급 비용 분석 (costUtils 사용) ===
+    let fixedCost = 0;
+    let variableCost = 0;
+
+    // FL Cost 계산 (Food + Labor)
+    let foodCost = 0;
+    let laborCost = 0;
+
+    data.forEach(d => {
+        if (d.expense <= 0) return;
+
+        const { type, category } = getCostType(d);
+        if (type === 'FIXED') {
+            fixedCost += d.expense;
+        } else {
+            variableCost += d.expense;
+        }
+
+        // FL Cost 상세
+        if (category.includes('식자재') || category.includes('Food') || category.includes('Meat')) {
+            foodCost += d.expense;
+        }
+        if (category.includes('인건비') || category.includes('Salary') || category.includes('Wages') || category.includes('급여')) {
+            laborCost += d.expense;
+        }
+    });
+
+    // 지표 계산
+    const flCost = foodCost + laborCost;
+    const flRatio = totalRevenue > 0 ? (flCost / totalRevenue) * 100 : 0;
+
+    // 손익분기점 (BEP)
+    const margin = totalRevenue - variableCost; // 공헌이익
+    const cmRatio = totalRevenue > 0 ? margin / totalRevenue : 0; // 공헌이익률
+    const bep = (cmRatio > 0 && fixedCost > 0) ? fixedCost / cmRatio : 0;
+    const bepReachedRatio = (bep > 0 && totalRevenue > 0) ? (totalRevenue / bep) * 100 : 0;
 
     // SVG 차트 생성 함수들
     const generateBarChart = (items: { name: string; value: number }[], total: number, color: string, maxItems = 10) => {
@@ -77,13 +107,13 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
         return `
         <svg width="100%" height="${chartHeight}" style="background: #f8fafc; border-radius: 8px; padding: 10px;">
             ${chartItems.map((item, idx) => {
-            const barWidth = (item.value / total * 100);
+            const barWidth = total > 0 ? (item.value / total * 100) : 0;
             const y = idx * (barHeight + 8);
             return `
                     <g>
                         <text x="0" y="${y + 15}" font-size="9" fill="#1f2937" font-weight="bold">${item.name.length > 15 ? item.name.substring(0, 15) + '...' : item.name}</text>
                         <rect x="140" y="${y}" width="${barWidth * 4.5}px" height="${barHeight}" fill="${color}" rx="3"/>
-                        <text x="${140 + barWidth * 4.5 + 5}" y="${y + 15}" font-size="8" fill="#1f2937">${item.value.toLocaleString()}원 (${(item.value / total * 100).toFixed(1)}%)</text>
+                        <text x="${140 + barWidth * 4.5 + 5}" y="${y + 15}" font-size="8" fill="#1f2937">${item.value.toLocaleString()}원 (${total > 0 ? (item.value / total * 100).toFixed(1) : 0}%)</text>
                     </g>
                 `;
         }).join('')}
@@ -96,7 +126,7 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
         const chartWidth = 500;
         const chartHeight = 120;
         const padding = 20;
-        const barWidth = (chartWidth - padding * 2) / chartItems.length / 2;
+        const barWidth = (chartWidth - padding * 2) / Math.max(chartItems.length, 1) / 2;
 
         return `
         <svg width="100%" height="${chartHeight + 40}" style="background: #f8fafc; border-radius: 8px; padding: 10px;">
@@ -133,6 +163,7 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
         const cy = 80;
 
         const pathSegments = segments.map(seg => {
+            if (seg.value <= 0) return '';
             const percentage = total > 0 ? (seg.value / total) : 0;
             const angle = percentage * 360;
             const startAngle = currentAngle;
@@ -147,6 +178,11 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
             const x2 = cx + radius * Math.cos(endRad);
             const y2 = cy + radius * Math.sin(endRad);
 
+            // If it's a full circle (100%), draw a circle instead
+            if (percentage >= 0.999) {
+                return `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="${seg.color}" stroke="#fff" stroke-width="2"/>`;
+            }
+
             const largeArc = angle > 180 ? 1 : 0;
 
             return `<path d="M ${cx} ${cy} L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2} Z" fill="${seg.color}" stroke="#fff" stroke-width="2"/>`;
@@ -156,7 +192,7 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
         <svg width="180" height="180" style="display: inline-block; vertical-align: top;">
             ${pathSegments}
             <circle cx="${cx}" cy="${cy}" r="30" fill="#fff"/>
-            <text x="${cx}" y="${cy + 5}" font-size="10" fill="#1f2937" text-anchor="middle" font-weight="bold">총 지출</text>
+            <text x="${cx}" y="${cy + 5}" font-size="10" fill="#1f2937" text-anchor="middle" font-weight="bold">비용 구조</text>
         </svg>
         <div style="display: inline-block; vertical-align: top; margin-left: 20px;">
             ${segments.map(seg => `
@@ -179,66 +215,95 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
     <style>
         @page { size: A4; margin: 12mm; }
         * { box-sizing: border-box; }
-        body { font-family: 'Malgun Gothic', sans-serif; font-size: 9pt; line-height: 1.3; color: #1f2937; margin: 0; padding: 0; }
-        h1 { font-size: 16pt; font-weight: bold; color: #1e40af; margin: 0 0 6px 0; border-bottom: 3px solid #3b82f6; padding-bottom: 4px; }
-        h2 { font-size: 12pt; font-weight: bold; color: #1e40af; margin: 12px 0 6px 0; padding-left: 6px; border-left: 4px solid #3b82f6; }
-        table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 8pt; }
-        th, td { border: 1px solid #cbd5e1; padding: 4px; text-align: left; color: #1f2937; }
-        th { background-color: #f1f5f9; font-weight: bold; color: #1e40af; }
-        .kpi-container { display: flex; gap: 8px; margin: 10px 0; }
-        .kpi-box { flex: 1; padding: 8px; background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%); border: 2px solid #cbd5e1; border-radius: 6px; text-align: center; }
-        .kpi-label { font-size: 8pt; color: #64748b; display: block; margin-bottom: 2px; }
-        .kpi-value { font-size: 13pt; font-weight: bold; color: #1e40af; }
+        body { font-family: 'Pretendard', 'Malgun Gothic', sans-serif; font-size: 10pt; line-height: 1.5; color: #1f2937; margin: 0; padding: 0; }
+        h1 { font-size: 18pt; font-weight: 800; color: #111827; margin: 0 0 10px 0; border-bottom: 3px solid #0f172a; padding-bottom: 8px; }
+        h2 { font-size: 14pt; font-weight: 700; color: #1e293b; margin: 20px 0 10px 0; padding-left: 8px; border-left: 4px solid #3b82f6; }
+        h3 { font-size: 11pt; font-weight: 600; color: #374151; margin: 15px 0 5px 0; }
+        table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 9pt; }
+        th, td { border: 1px solid #e2e8f0; padding: 6px 8px; text-align: left; color: #334155; }
+        th { background-color: #f8fafc; font-weight: 600; color: #0f172a; border-bottom: 2px solid #cbd5e1; }
+        .kpi-container { display: flex; gap: 12px; margin: 15px 0; }
+        .kpi-box { flex: 1; padding: 15px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .kpi-label { font-size: 9pt; color: #64748b; display: block; margin-bottom: 4px; font-weight: 500; }
+        .kpi-value { font-size: 16pt; font-weight: 800; color: #0f172a; font-family: 'Segoe UI', sans-serif; }
         .positive { color: #16a34a; }
         .negative { color: #dc2626; }
-        .insight-box { background: #eff6ff; padding: 10px; border-left: 4px solid #3b82f6; margin: 10px 0; font-size: 8pt; }
+        .insight-box { background: #eff6ff; padding: 15px; border-radius: 8px; border: 1px solid #bfdbfe; margin: 15px 0; font-size: 9pt; color: #1e3a8a; }
+        .warning-box { background: #fff7ed; padding: 15px; border-radius: 8px; border: 1px solid #fed7aa; margin: 15px 0; font-size: 9pt; color: #9a3412; }
         .page-break { page-break-after: always; }
-        .footer { text-align: right; color: #94a3b8; margin-top: 15px; font-size: 7pt; border-top: 1px solid #e2e8f0; padding-top: 6px; }
+        .footer { text-align: right; color: #94a3b8; margin-top: 30px; font-size: 8pt; border-top: 1px solid #e2e8f0; padding-top: 10px; }
+        .chart-container { margin: 20px 0; padding: 10px; border: 1px solid #f1f5f9; border-radius: 8px; background: #fafafa; }
+        
+        /* 테이블 스트라이프 */
+        tr:nth-child(even) { background-color: #f8fafc; }
     </style>
 </head>
 <body>
-    <!-- 페이지 1: 표지 -->
-    <div style="text-align: center; padding: 80px 0;">
-        <h1 style="font-size: 28pt; border: none; margin-bottom: 20px;">📊 경영 분석 종합 보고서</h1>
-        <p style="font-size: 14pt; color: #64748b; margin: 20px 0;">분석 기간: ${dateRange}</p>
-        <p style="font-size: 12pt; color: #94a3b8;">데이터 건수: ${data.length.toLocaleString()}건</p>
+    <!-- 페이지 1: 경영 요약 -->
+    <div style="padding: 20px 0;">
+        <div style="text-align: center; margin-bottom: 40px;">
+            <h1 style="font-size: 24pt; border: none; margin-bottom: 10px;">📊 2024 경영 분석 리포트</h1>
+            <p style="font-size: 12pt; color: #64748b;">COSTAR FOOD ERP System | 분석 기간: ${dateRange}</p>
+        </div>
         
-        <div style="margin-top: 60px; padding: 30px; background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border-radius: 12px;">
-            <h2 style="border: none; padding: 0; margin-bottom: 20px; color: #1e40af;">핵심 경영 지표</h2>
-            <div class="kpi-container" style="max-width: 600px; margin: 0 auto;">
+        <div style="background: #f8fafc; padding: 25px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 30px;">
+            <h2 style="border: none; padding: 0; margin-bottom: 20px; color: #0f172a;">💼 Executive Summary (경영 요약)</h2>
+            <div class="kpi-container">
                 <div class="kpi-box">
                     <span class="kpi-label">총 매출</span>
-                    <span class="kpi-value positive" style="font-size: 18pt;">${totalRevenue.toLocaleString()}원</span>
+                    <span class="kpi-value positive">${totalRevenue.toLocaleString()}원</span>
                 </div>
                 <div class="kpi-box">
-                    <span class="kpi-label">총 지출</span>
-                    <span class="kpi-value negative" style="font-size: 18pt;">${totalExpense.toLocaleString()}원</span>
+                    <span class="kpi-label">영업 이익</span>
+                    <span class="kpi-value ${netProfit >= 0 ? 'positive' : 'negative'}">${netProfit.toLocaleString()}원</span>
+                </div>
+                <div class="kpi-box">
+                    <span class="kpi-label">영업 이익률</span>
+                    <span class="kpi-value ${netProfit >= 0 ? 'positive' : 'negative'}">${totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : 0}%</span>
                 </div>
             </div>
-            <div class="kpi-container" style="max-width: 600px; margin: 20px auto 0;">
-                <div class="kpi-box">
-                    <span class="kpi-label">순이익</span>
-                    <span class="kpi-value ${netProfit >= 0 ? 'positive' : 'negative'}" style="font-size: 18pt;">${netProfit.toLocaleString()}원</span>
+            
+             <div class="kpi-container">
+                <div class="kpi-box" style="background: #fdf2f8; border-color: #fce7f3;">
+                    <span class="kpi-label">고정비 합계</span>
+                    <span class="kpi-value" style="color: #be185d;">${fixedCost.toLocaleString()}원</span>
                 </div>
-                <div class="kpi-box">
-                    <span class="kpi-label">순이익률</span>
-                    <span class="kpi-value ${netProfit >= 0 ? 'positive' : 'negative'}" style="font-size: 18pt;">${totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : 0}%</span>
+                <div class="kpi-box" style="background: #eff6ff; border-color: #dbeafe;">
+                    <span class="kpi-label">변동비 합계</span>
+                    <span class="kpi-value" style="color: #1d4ed8;">${variableCost.toLocaleString()}원</span>
+                </div>
+                 <div class="kpi-box">
+                    <span class="kpi-label">FL Cost %</span>
+                    <span class="kpi-value ${flRatio <= 65 ? 'positive' : 'negative'}">${flRatio.toFixed(1)}%</span>
                 </div>
             </div>
+        </div>
+
+        <h2 style="margin-top: 40px;">💡 CFO 경영 인사이트</h2>
+        <div class="insight-box">
+            <h3 style="margin: 0 0 10px 0;">✅ 경영 상태 진단</h3>
+            <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
+                <li><strong>손익분기점(BEP) 분석:</strong> 현재 매출은 손익분기점(${Math.round(bep).toLocaleString()}원)의 <strong>${bepReachedRatio.toFixed(1)}%</strong> 수준입니다. 
+                    ${bepReachedRatio >= 100 ? '손익분기점을 초과하여 이익 구간에 진입했습니다.' : '아직 손익분기점에 도달하지 못했습니다. 매출 증대 혹은 고정비 절감이 필요합니다.'}</li>
+                <li><strong>FL Cost (식자재+인건비) 비중:</strong> <strong>${flRatio.toFixed(1)}%</strong>로, ${flRatio <= 65 ? '적정 수준(65% 이하)으로 잘 관리되고 있습니다.' : '적정 수준(65%)을 초과하여 수익성 개선을 위한 원가 및 인건비 관리가 요구됩니다.'}</li>
+                <li><strong>비용 구조:</strong> 고정비 비중이 <strong>${totalExpense > 0 ? ((fixedCost / totalExpense) * 100).toFixed(1) : 0}%</strong>, 변동비 비중이 <strong>${totalExpense > 0 ? ((variableCost / totalExpense) * 100).toFixed(1) : 0}%</strong>입니다.
+                    ${(fixedCost / totalExpense) > 0.4 ? '고정비 비중이 다소 높습니다. 매출 변동에 취약할 수 있으니 임대료, 통신비 등 고정 지출을 점검하세요.' : '비용 구조가 탄력적입니다.'}</li>
+            </ul>
         </div>
     </div>
     <div class="footer">페이지 1 / ${totalPages}</div>
     <div class="page-break"></div>
 
     <!-- 페이지 2: 일별 추이 차트 -->
-    <h1>📈 일별 매출/지출 추이 분석</h1>
+    <h1>📈 매출 및 지출 트렌드 분석</h1>
+    <p style="color: #64748b; margin-bottom: 20px;">최근 매출 흐름과 지출 패턴을 시각적으로 분석합니다.</p>
     
-    <h2>1. 추이 차트 (최근 10일)</h2>
-    <div style="margin: 10px 0;">
+    <h2>1. 최근 10일 추이</h2>
+    <div class="chart-container">
         ${generateLineChart(dailyData, maxDaily)}
     </div>
 
-    <h2>2. 일별 상세 데이터</h2>
+    <h2>2. 일별 상세 데이터 목록</h2>
     <table>
         <thead>
             <tr>
@@ -246,7 +311,7 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
                 <th style="text-align: right;">매출 (원)</th>
                 <th style="text-align: right;">지출 (원)</th>
                 <th style="text-align: right;">순이익 (원)</th>
-                <th style="text-align: right;">순이익률 (%)</th>
+                <th style="text-align: right;">이익률 (%)</th>
             </tr>
         </thead>
         <tbody>
@@ -266,39 +331,37 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
     <div class="page-break"></div>
 
     <!-- 페이지 3: 거래처별 매출 -->
-    <h1>💰 거래처별 매출 분석</h1>
+    <h1>💰 거래처별 매출 기여도 분석</h1>
     
     <div class="insight-box">
-        <strong>🏆 주요 매출처:</strong> ${revenueByClient[0]?.name || 'N/A'}가 전체 매출의 ${revenueByClient[0] ? ((revenueByClient[0].value / totalRevenue) * 100).toFixed(1) : 0}%를 차지합니다.
+        <strong>🏆 핵심 거래처 (Key Account):</strong> <br>
+        1위인 <strong>${revenueByClient[0]?.name || 'N/A'}</strong> 거래처가 전체 매출의 <strong>${revenueByClient[0] ? ((revenueByClient[0].value / totalRevenue) * 100).toFixed(1) : 0}%</strong>를 견인하고 있습니다.
     </div>
 
-    <h2>1. 매출 비중 차트 (TOP 10)</h2>
-    ${generateBarChart(revenueByClient, totalRevenue, '#22c55e', 10)}
+    <h2>1. 상위 10개 거래처 매출 비중</h2>
+    <div class="chart-container">
+        ${generateBarChart(revenueByClient, totalRevenue, '#22c55e', 10)}
+    </div>
 
-    <h2>2. 거래처별 매출 상세</h2>
+    <h2>2. 거래처별 세부 매출 현황</h2>
     <table>
         <thead>
             <tr>
-                <th>순위</th>
-                <th>거래처</th>
+                <th style="width: 60px; text-align: center;">순위</th>
+                <th>거래처명</th>
                 <th style="text-align: right;">매출액 (원)</th>
-                <th style="text-align: right;">비중 (%)</th>
+                <th style="text-align: right;">기여도 (%)</th>
             </tr>
         </thead>
         <tbody>
             ${revenueByClient.slice(0, 15).map((item, idx) => `
             <tr>
-                <td>${idx + 1}</td>
+                <td style="text-align: center;">${idx + 1}</td>
                 <td><strong>${item.name}</strong></td>
                 <td style="text-align: right; font-weight: bold; color: #16a34a;">${item.value.toLocaleString()}</td>
-                <td style="text-align: right;">${((item.value / totalRevenue) * 100).toFixed(1)}%</td>
+                <td style="text-align: right;">${totalRevenue > 0 ? ((item.value / totalRevenue) * 100).toFixed(1) : 0}%</td>
             </tr>
             `).join('')}
-            <tr style="background: #f1f5f9; font-weight: bold;">
-                <td colspan="2">총 매출</td>
-                <td style="text-align: right; color: #16a34a;">${totalRevenue.toLocaleString()}</td>
-                <td style="text-align: right;">100.0%</td>
-            </tr>
         </tbody>
     </table>
 
@@ -306,21 +369,24 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
     <div class="page-break"></div>
 
     <!-- 페이지 4: 거래처별 지출 -->
-    <h1>💸 거래처별 지출 분석</h1>
+    <h1>💸 지출처별 비용 상세 분석</h1>
     
-    <div class="insight-box">
-        <strong>💰 주요 비용처:</strong> ${expenseByClient[0]?.name || 'N/A'}가 전체 지출의 ${expenseByClient[0] ? ((expenseByClient[0].value / totalExpense) * 100).toFixed(1) : 0}%를 차지합니다.
+    <div class="warning-box">
+        <strong>⚠️ 주요 지출처 (Cost Center):</strong> <br>
+        지출이 가장 큰 곳은 <strong>${expenseByClient[0]?.name || 'N/A'}</strong>이며, 전체 비용의 <strong>${expenseByClient[0] ? ((expenseByClient[0].value / totalExpense) * 100).toFixed(1) : 0}%</strong>를 차지합니다. 해당 거래처의 단가 적정성을 주기적으로 검토하시기 바랍니다.
     </div>
 
-    <h2>1. 지출 비중 차트 (TOP 10)</h2>
-    ${generateBarChart(expenseByClient, totalExpense, '#ef4444', 10)}
+    <h2>1. 상위 10개 지출처 비중</h2>
+    <div class="chart-container">
+        ${generateBarChart(expenseByClient, totalExpense, '#ef4444', 10)}
+    </div>
 
-    <h2>2. 거래처별 지출 상세</h2>
+    <h2>2. 지출처별 세부 내역</h2>
     <table>
         <thead>
             <tr>
-                <th>순위</th>
-                <th>거래처</th>
+                <th style="width: 60px; text-align: center;">순위</th>
+                <th>지출처명</th>
                 <th style="text-align: right;">지출액 (원)</th>
                 <th style="text-align: right;">비중 (%)</th>
             </tr>
@@ -328,17 +394,12 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
         <tbody>
             ${expenseByClient.slice(0, 15).map((item, idx) => `
             <tr>
-                <td>${idx + 1}</td>
+                <td style="text-align: center;">${idx + 1}</td>
                 <td><strong>${item.name}</strong></td>
                 <td style="text-align: right; font-weight: bold; color: #dc2626;">${item.value.toLocaleString()}</td>
-                <td style="text-align: right;">${((item.value / totalExpense) * 100).toFixed(1)}%</td>
+                <td style="text-align: right;">${totalExpense > 0 ? ((item.value / totalExpense) * 100).toFixed(1) : 0}%</td>
             </tr>
             `).join('')}
-            <tr style="background: #f1f5f9; font-weight: bold;">
-                <td colspan="2">총 지출</td>
-                <td style="text-align: right; color: #dc2626;">${totalExpense.toLocaleString()}</td>
-                <td style="text-align: right;">100.0%</td>
-            </tr>
         </tbody>
     </table>
 
@@ -346,28 +407,30 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
     <div class="page-break"></div>
 
     <!-- 페이지 5: 카테고리별 지출 -->
-    <h1>📊 카테고리별 지출 분석</h1>
+    <h1>📊 항목별(계정별) 지출 분석</h1>
     
-    <h2>1. 카테고리별 지출 비중 차트</h2>
-    ${generateBarChart(categoryExpenses, totalExpense, '#3b82f6', 15)}
+    <h2>1. 항목별 지출 비중</h2>
+    <div class="chart-container">
+        ${generateBarChart(categoryExpenses, totalExpense, '#3b82f6', 15)}
+    </div>
 
-    <h2>2. 카테고리별 지출 상세</h2>
+    <h2>2. 항목별 세부 내역</h2>
     <table>
         <thead>
             <tr>
-                <th>순위</th>
-                <th>카테고리</th>
-                <th style="text-align: right;">지출액 (원)</th>
+                <th style="width: 60px; text-align: center;">순위</th>
+                <th>계정 과목</th>
+                <th style="text-align: right;">금액 (원)</th>
                 <th style="text-align: right;">비중 (%)</th>
             </tr>
         </thead>
         <tbody>
             ${categoryExpenses.map((item, idx) => `
             <tr>
-                <td>${idx + 1}</td>
+                <td style="text-align: center;">${idx + 1}</td>
                 <td><strong>${item.name}</strong></td>
                 <td style="text-align: right; font-weight: bold; color: #2563eb;">${item.value.toLocaleString()}</td>
-                <td style="text-align: right;">${((item.value / totalExpense) * 100).toFixed(1)}%</td>
+                <td style="text-align: right;">${totalExpense > 0 ? ((item.value / totalExpense) * 100).toFixed(1) : 0}%</td>
             </tr>
             `).join('')}
         </tbody>
@@ -376,39 +439,37 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
     <div class="footer">페이지 5 / ${totalPages}</div>
     <div class="page-break"></div>
 
-    <!-- 페이지 6: 변동비/고정비 및 인사이트 -->
-    <h1>🔍 변동비/고정비 분석 및 경영 인사이트</h1>
+    <!-- 페이지 6: 비용 구조 분석 -->
+    <h1>🔍 고정비/변동비 Cost Structure 분석</h1>
+    <p style="color: #64748b; margin-bottom: 20px;">매출 증감에 따른 이익 변화를 예측하기 위해 비용의 성격을 분석합니다.</p>
     
-    <h2>1. 변동비 vs 고정비 구조</h2>
-    <div style="margin: 15px 0;">
-        ${generatePieChart([
-            { name: '변동비', value: variableCost, color: '#ef4444' },
-            { name: '고정비', value: fixedCost, color: '#3b82f6' },
-            { name: '기타', value: otherCost, color: '#94a3b8' }
+    <div style="display: flex; gap: 20px; align-items: flex-start; margin: 30px 0;">
+        <div style="flex: 1;">
+            <h2>1. 비용 구조 차트</h2>
+            <div class="chart-container">
+                ${generatePieChart([
+            { name: '변동비', value: variableCost, color: '#1d4ed8' }, // deep blue
+            { name: '고정비', value: fixedCost, color: '#be185d' },    // pinkish red
         ], totalExpense)}
-    </div>
-
-    <h2>2. 종합 인사이트</h2>
-    <div class="insight-box">
-        <h3 style="margin-top: 0;">📌 주요 발견사항</h3>
-        <ul style="margin: 6px 0; padding-left: 18px;">
-            <li><strong>순이익률:</strong> ${totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : 0}% (${netProfit >= 0 ? '흑자' : '적자'})</li>
-            <li><strong>주요 매출처:</strong> ${revenueByClient[0]?.name || 'N/A'} (${revenueByClient[0] ? ((revenueByClient[0].value / totalRevenue) * 100).toFixed(1) : 0}%)</li>
-            <li><strong>주요 비용처:</strong> ${expenseByClient[0]?.name || 'N/A'} (${expenseByClient[0] ? ((expenseByClient[0].value / totalExpense) * 100).toFixed(1) : 0}%)</li>
-            <li><strong>비용 구조:</strong> 변동비 ${totalExpense > 0 ? ((variableCost / totalExpense) * 100).toFixed(1) : 0}%, 고정비 ${totalExpense > 0 ? ((fixedCost / totalExpense) * 100).toFixed(1) : 0}%</li>
-        </ul>
-        
-        <h3>💡 개선 권장사항</h3>
-        <ul style="margin: 6px 0; padding-left: 18px;">
-            ${netProfit < 0 ? '<li><strong style="color: #dc2626;">[긴급]</strong> 현재 적자 상태입니다. 지출 절감이 필요합니다.</li>' : ''}
-            ${totalExpense > 0 && (variableCost / totalExpense) > 0.6 ? '<li>변동비 비중이 높습니다. 구매 단가 협상을 고려하세요.</li>' : ''}
-            ${revenueByClient[0] && ((revenueByClient[0].value / totalRevenue) > 0.5) ? '<li>특정 거래처 의존도가 높습니다. 매출처 다변화가 필요합니다.</li>' : ''}
-            <li>정기적인 경영 분석을 통해 비즈니스 트렌드를 파악하세요.</li>
-        </ul>
+            </div>
+        </div>
+        <div style="flex: 1; padding: 20px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
+            <h3 style="margin-top: 0; color: #0f172a;">📝 구조 분석 리포트</h3>
+            <ul style="padding-left: 20px; line-height: 1.8; font-size: 9.5pt;">
+                <li><strong>고정비 (${totalExpense > 0 ? ((fixedCost / totalExpense) * 100).toFixed(1) : 0}%)</strong>: 임대료, 인건비(고정급), 보험료 등 매출과 무관하게 발생하는 비용입니다. 현재 <strong>${fixedCost.toLocaleString()}원</strong>입니다.</li>
+                <li><strong>변동비 (${totalExpense > 0 ? ((variableCost / totalExpense) * 100).toFixed(1) : 0}%)</strong>: 식자재, 배달료 등 매출에 비례하여 발생하는 비용입니다. 현재 <strong>${variableCost.toLocaleString()}원</strong>입니다.</li>
+            </ul>
+             <div style="margin-top: 20px; padding-top: 20px; border-top: 1px dashed #cbd5e1;">
+                <strong>💡 Action Plan:</strong><br>
+                ${(fixedCost / totalExpense) > 0.5
+                ? `고정비 비중이 높습니다. 매출이 감소할 경우 <strong>손익분기점(${Math.round(bep).toLocaleString()}원)</strong> 압박이 커질 수 있으니, 불필요한 고정 지출을 줄이거나 매출 규모를 키우는 전략이 필요합니다.`
+                : `변동비 비중이 높습니다. 이는 매출 감소 시 리스크가 적지만, 매출 증가 시 이익률 개선 폭이 제한적일 수 있음을 의미합니다. 식자재 로스 관리 및 매입 단가 인하에 집중하세요.`}
+            </div>
+        </div>
     </div>
 
     <div class="footer">
-        작성일: ${new Date().toLocaleDateString('ko-KR')} | 자동 생성 | 페이지 ${totalPages} / ${totalPages}
+        COSTAR FOOD ERP System | 작성일: ${new Date().toLocaleDateString('ko-KR')} ${new Date().toLocaleTimeString('ko-KR')} | 페이지 ${totalPages} / ${totalPages}
     </div>
 </body>
 </html>
