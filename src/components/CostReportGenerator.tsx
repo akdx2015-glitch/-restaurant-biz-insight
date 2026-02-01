@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { FileBarChart, Copy, RefreshCw, Calendar, ListFilter, Briefcase } from 'lucide-react';
+import { FileBarChart, Copy, RefreshCw, Calendar, ListFilter, Briefcase, FileDown } from 'lucide-react';
 import type { CostPurchaseData, IngredientData } from '../types';
+import { exportToJsxWord } from '../utils/docxGenerator';
 import {
     filterByMonth,
     filterByDateRange,
@@ -420,6 +421,22 @@ ${vendors.slice(0, 5).map((v, idx) =>
         }
     };
 
+    // Word로 저장
+    const handleExportWord = async () => {
+        if (!report) {
+            alert('먼저 보고서를 생성해주세요.');
+            return;
+        }
+
+        const fileName = `[CostReport]_${startDate || 'WholePeriod'}_${new Date().toISOString().slice(0, 10)}.docx`;
+        try {
+            await exportToJsxWord(report, fileName);
+        } catch (error) {
+            console.error('Word export failed:', error);
+            alert('Word 문서 생성 중 오류가 발생했습니다.');
+        }
+    };
+
     if (loading) {
         return (
             <div className="flex items-center justify-center h-64">
@@ -491,108 +508,119 @@ ${vendors.slice(0, 5).map((v, idx) =>
                             <Copy size={16} />
                             복사
                         </button>
+
+                        <button
+                            onClick={handleExportWord}
+                            disabled={!report}
+                            className="px-4 py-2 bg-blue-700 hover:bg-blue-800 disabled:bg-slate-800 disabled:text-slate-600 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                        >
+                            <FileDown size={16} />
+                            Word 저장
+                        </button>
                     </div>
                 </div>
             </div>
 
             {/* 보고서 미리보기 */}
-            {report && (
-                <div className="bg-slate-900 p-8 rounded-2xl shadow-sm border border-slate-800">
-                    <div className="prose prose-invert max-w-none">
-                        <div style={{ fontFamily: 'inherit' }}>
-                            {(() => {
-                                const lines = report.split('\n');
-                                const blocks: React.ReactNode[] = [];
-                                let currentTable: string[] = [];
-                                let keyCounter = 0;
+            {
+                report && (
+                    <div className="bg-slate-900 p-8 rounded-2xl shadow-sm border border-slate-800">
+                        <div className="prose prose-invert max-w-none">
+                            <div style={{ fontFamily: 'inherit' }}>
+                                {(() => {
+                                    const lines = report.split('\n');
+                                    const blocks: React.ReactNode[] = [];
+                                    let currentTable: string[] = [];
+                                    let keyCounter = 0;
 
-                                const flushTable = () => {
-                                    if (currentTable.length > 0) {
-                                        const headers = currentTable[0]
-                                            .split('|')
-                                            .map(s => s.trim())
-                                            .filter(s => s !== '');
-
-                                        const rows = currentTable.slice(2).map(row =>
-                                            row.split('|')
+                                    const flushTable = () => {
+                                        if (currentTable.length > 0) {
+                                            const headers = currentTable[0]
+                                                .split('|')
                                                 .map(s => s.trim())
-                                                .filter((_, idx) => idx > 0 && idx < row.split('|').length - 1)
-                                        );
+                                                .filter(s => s !== '');
 
-                                        const cleanHeaders = headers;
+                                            const rows = currentTable.slice(2).map(row =>
+                                                row.split('|')
+                                                    .map(s => s.trim())
+                                                    .filter((_, idx) => idx > 0 && idx < row.split('|').length - 1)
+                                            );
 
-                                        blocks.push(
-                                            <div key={`table-${keyCounter++}`} className="overflow-x-auto my-4 border border-slate-700 rounded-lg">
-                                                <table className="w-full text-left border-collapse text-xs">
-                                                    <thead>
-                                                        <tr className="bg-slate-800 border-b border-slate-700">
-                                                            {cleanHeaders.map((h, i) => (
-                                                                <th key={i} className="p-2 font-bold text-slate-200 border-r border-slate-700 last:border-r-0 whitespace-nowrap">
-                                                                    {h}
-                                                                </th>
-                                                            ))}
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {rows.map((row, rIdx) => (
-                                                            <tr key={rIdx} className="border-b border-slate-800 last:border-b-0 hover:bg-slate-800/50">
-                                                                {row.map((cell, cIdx) => (
-                                                                    <td key={cIdx} className="p-1.5 text-slate-300 border-r border-slate-800 last:border-r-0">
-                                                                        {cell}
-                                                                    </td>
+                                            const cleanHeaders = headers;
+
+                                            blocks.push(
+                                                <div key={`table-${keyCounter++}`} className="overflow-x-auto my-4 border border-slate-700 rounded-lg">
+                                                    <table className="w-full text-left border-collapse text-xs">
+                                                        <thead>
+                                                            <tr className="bg-slate-800 border-b border-slate-700">
+                                                                {cleanHeaders.map((h, i) => (
+                                                                    <th key={i} className="p-2 font-bold text-slate-200 border-r border-slate-700 last:border-r-0 whitespace-nowrap">
+                                                                        {h}
+                                                                    </th>
                                                                 ))}
                                                             </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        );
-                                        currentTable = [];
-                                    }
-                                };
-
-                                lines.forEach((line, idx) => {
-                                    const trimmed = line.trim();
-
-                                    if (trimmed.startsWith('|')) {
-                                        currentTable.push(trimmed);
-                                    } else {
-                                        flushTable();
-
-                                        if (line.startsWith('## ')) {
-                                            blocks.push(<h2 key={keyCounter++} className="text-2xl font-bold text-white mt-8 mb-4">{line.replace('## ', '')}</h2>);
-                                        } else if (line.startsWith('### ')) {
-                                            blocks.push(<h3 key={keyCounter++} className="text-xl font-bold text-slate-200 mt-6 mb-3">{line.replace('### ', '')}</h3>);
-                                        } else if (line.startsWith('**') && line.endsWith('**')) {
-                                            blocks.push(<p key={keyCounter++} className="font-bold text-slate-200 my-2">{line.replace(/\*\*/g, '')}</p>);
-                                        } else if (line.startsWith('---')) {
-                                            blocks.push(<hr key={keyCounter++} className="my-6 border-slate-700" />);
-                                        } else if (trimmed === '') {
-                                            blocks.push(<div key={keyCounter++} className="h-2"></div>);
-                                        } else {
-                                            const parts = line.split(/(\*\*[^*]+\*\*)/g);
-                                            blocks.push(
-                                                <p key={keyCounter++} className="my-1 text-slate-300 text-sm leading-relaxed">
-                                                    {parts.map((part, i) => {
-                                                        if (part.startsWith('**') && part.endsWith('**')) {
-                                                            return <strong key={i} className="font-bold text-slate-100">{part.slice(2, -2)}</strong>;
-                                                        }
-                                                        return part;
-                                                    })}
-                                                </p>
+                                                        </thead>
+                                                        <tbody>
+                                                            {rows.map((row, rIdx) => (
+                                                                <tr key={rIdx} className="border-b border-slate-800 last:border-b-0 hover:bg-slate-800/50">
+                                                                    {row.map((cell, cIdx) => (
+                                                                        <td key={cIdx} className="p-1.5 text-slate-300 border-r border-slate-800 last:border-r-0">
+                                                                            {cell}
+                                                                        </td>
+                                                                    ))}
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
                                             );
+                                            currentTable = [];
                                         }
-                                    }
-                                });
-                                flushTable();
+                                    };
 
-                                return blocks;
-                            })()}
+                                    lines.forEach((line, idx) => {
+                                        const trimmed = line.trim();
+
+                                        if (trimmed.startsWith('|')) {
+                                            currentTable.push(trimmed);
+                                        } else {
+                                            flushTable();
+
+                                            if (line.startsWith('## ')) {
+                                                blocks.push(<h2 key={keyCounter++} className="text-2xl font-bold text-white mt-8 mb-4">{line.replace('## ', '')}</h2>);
+                                            } else if (line.startsWith('### ')) {
+                                                blocks.push(<h3 key={keyCounter++} className="text-xl font-bold text-slate-200 mt-6 mb-3">{line.replace('### ', '')}</h3>);
+                                            } else if (line.startsWith('**') && line.endsWith('**')) {
+                                                blocks.push(<p key={keyCounter++} className="font-bold text-slate-200 my-2">{line.replace(/\*\*/g, '')}</p>);
+                                            } else if (line.startsWith('---')) {
+                                                blocks.push(<hr key={keyCounter++} className="my-6 border-slate-700" />);
+                                            } else if (trimmed === '') {
+                                                blocks.push(<div key={keyCounter++} className="h-2"></div>);
+                                            } else {
+                                                const parts = line.split(/(\*\*[^*]+\*\*)/g);
+                                                blocks.push(
+                                                    <p key={keyCounter++} className="my-1 text-slate-300 text-sm leading-relaxed">
+                                                        {parts.map((part, i) => {
+                                                            if (part.startsWith('**') && part.endsWith('**')) {
+                                                                return <strong key={i} className="font-bold text-slate-100">{part.slice(2, -2)}</strong>;
+                                                            }
+                                                            return part;
+                                                        })}
+                                                    </p>
+                                                );
+                                            }
+                                        }
+                                    });
+                                    flushTable();
+
+                                    return blocks;
+                                })()}
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     );
 }
 
