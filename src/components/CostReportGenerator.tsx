@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { FileBarChart, Copy, RefreshCw, Calendar, ListFilter, Briefcase, Upload, FileUp } from 'lucide-react';
-import type { CostPurchaseData } from '../types';
+import type { CostPurchaseData, IngredientData } from '../types';
 import {
     loadCostMasterData,
     filterByMonth,
@@ -9,16 +9,26 @@ import {
     analyzePriceTrends,
     analyzeByVendor,
     classifyByCostType,
-    parseCostDataFromFile
+    parseCostDataFromFile,
+    convertIngredientToCostPurchase
 } from '../utils/costDataParser';
 
 interface CostReportGeneratorProps {
     startDate?: string;
     endDate?: string;
+    ingredientData?: IngredientData[];
 }
 
-export function CostReportGenerator({ startDate, endDate }: CostReportGeneratorProps) {
+export function CostReportGenerator({ startDate, endDate, ingredientData }: CostReportGeneratorProps) {
     const [costData, setCostData] = useState<CostPurchaseData[]>([]);
+
+    // 외부에서 주입된 ingredientData가 있으면 자동으로 로드
+    useEffect(() => {
+        if (ingredientData && ingredientData.length > 0) {
+            const converted = convertIngredientToCostPurchase(ingredientData);
+            setCostData(converted);
+        }
+    }, [ingredientData]);
 
     // 기간 표시용 텍스트
     const dateRangeText = startDate && endDate ? `${startDate} ~ ${endDate}` : (startDate ? `${startDate} 이후` : '전체 기간');

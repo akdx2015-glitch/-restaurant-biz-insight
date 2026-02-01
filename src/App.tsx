@@ -223,7 +223,11 @@ function App() {
                 <div className="animate-fade-in-up">
                   <div className={activeTab === 'management' ? 'block' : 'hidden'}>
                     {filteredRevenueData.length > 0 ? (
-                      <Dashboard data={filteredRevenueData} startDate={startDate} />
+                      <Dashboard
+                        data={filteredRevenueData}
+                        startDate={startDate}
+                        ingredientData={filteredIngredientData}
+                      />
                     ) : (
                       <div className="text-center p-12 bg-slate-900 rounded-2xl border border-dashed border-slate-800">
                         <p className="text-slate-400">선택한 기간에 해당하는 매출 데이터가 없습니다.</p>

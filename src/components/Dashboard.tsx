@@ -17,9 +17,10 @@ import { CATEGORY_RULES, findCategory, getCostType } from '../utils/costUtils';
 interface DashboardProps {
     data: RevenueData[];
     startDate: string;
+    ingredientData?: import('../types').IngredientData[]; // 타입 임포트 혹은 상단의 import 활용
 }
 
-export function Dashboard({ data, startDate }: DashboardProps) {
+export function Dashboard({ data, startDate, ingredientData }: DashboardProps) {
     useEffect(() => {
         console.log('Reporting Period:', startDate);
     }, [startDate]);
@@ -1414,7 +1415,7 @@ export function Dashboard({ data, startDate }: DashboardProps) {
             {activeFeature === 'costReport' && (
                 <div className="animate-in fade-in slide-in-from-top-4 duration-500 pb-8">
                     <ErrorBoundary>
-                        <CostReportGenerator startDate={startDate} />
+                        <CostReportGenerator startDate={startDate} ingredientData={ingredientData} />
                     </ErrorBoundary>
                 </div>
             )}

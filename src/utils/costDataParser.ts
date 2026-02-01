@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import type { CostPurchaseData } from '../types';
+import type { CostPurchaseData, IngredientData } from '../types';
 
 /**
  * Excel 파일에서 원가 데이터 파싱
@@ -255,4 +255,40 @@ export const getAvailableMonths = (data: CostPurchaseData[]): string[] => {
         }
     });
     return Array.from(months).sort();
+};
+/**
+ * IngredientData를 CostPurchaseData로 변환 (통합 분석용)
+ */
+export const convertIngredientToCostPurchase = (data: IngredientData[]): CostPurchaseData[] => {
+    return data.map(item => {
+        let majorCategory: '식자재' | '생활용품' | '운용용품' | '반려동물' | '기타' | '차량용품' = '식자재';
+
+        // 카테고리 매핑
+        if (item.category === '공산품') {
+            majorCategory = '운용용품';
+        } else if (item.category === '기타') {
+            majorCategory = '기타';
+        } else {
+            // 채소, 육류, 해산물, 주류/음료 등은 모두 식자재로 분류
+            majorCategory = '식자재';
+        }
+
+        return {
+            월: item.date ? item.date.substring(0, 7) : '',
+            날짜: item.date,
+            거래처: item.vendor || '기타',
+            대분류: majorCategory,
+            중분류: item.category, // 원래 카테고리를 중분류로 활용
+            소분류: item.category,
+            품명: item.name,
+            규격: 'N/A', // 정보 없음
+            수량: item.quantity,
+            단위: '개',  // 기본값
+            단가: item.unitPrice,
+            공급가: Math.round(item.totalPrice / 1.1),
+            부가세: item.totalPrice - Math.round(item.totalPrice / 1.1),
+            합계금액: item.totalPrice,
+            결제수단: '카드'
+        };
+    });
 };
