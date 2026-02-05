@@ -43,16 +43,30 @@ export function DetailModal({ isOpen, onClose, title, data, totalAmount, dateRan
         try {
             const doc = new jsPDF('l', 'mm', 'a4');
 
-            // 한글 폰트 로드 (Noto Sans KR)
-            // 주의: CORS 문제나 네트워크 환경에 따라 폰트 로드가 실패할 수 있습니다.
-            // 실무에서는 폰트 파일을 로컬 assets에 포함시키고 import해서 사용하는 것이 좋습니다.
+            // 한글 폰트 로드 (NanumGothic)
             try {
-                const fontUrl = 'https://raw.githubusercontent.com/googlefonts/noto-cjk/main/Sans/Variable/TTF/NotoSansCJKsc-VF.ttf';
-                // 임시로 기본 폰트 사용 시도 (한글 깨짐 가능성 있음) - 실제로는 base64 폰트 문자열이 필요함
-                // 여기서는 폰트 로드 로직을 플레이스홀더로 둡니다. 
-                // doc.addFileToVFS('Malgun.ttf', fontBase64);
-                // doc.addFont('Malgun.ttf', 'Malgun', 'normal');
-                // doc.setFont('Malgun');
+                const response = await fetch('https://raw.githubusercontent.com/google/fonts/main/ofl/nanumgothic/NanumGothic-Regular.ttf');
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const reader = new FileReader();
+
+                    await new Promise((resolve, reject) => {
+                        reader.onload = (e) => {
+                            const result = e.target?.result as string;
+                            // base64 문자열에서 헤더 제거 (data:font/ttf;base64, 부분)
+                            const base64Font = result.split(',')[1];
+
+                            doc.addFileToVFS('NanumGothic.ttf', base64Font);
+                            doc.addFont('NanumGothic.ttf', 'NanumGothic', 'normal');
+                            doc.setFont('NanumGothic');
+                            resolve(null);
+                        };
+                        reader.onerror = reject;
+                        reader.readAsDataURL(blob);
+                    });
+                } else {
+                    console.warn('폰트 다운로드 실패');
+                }
             } catch (e) {
                 console.warn('Font loading failed', e);
             }
@@ -75,8 +89,8 @@ export function DetailModal({ isOpen, onClose, title, data, totalAmount, dateRan
                 }
 
                 // 헤더 정보 (첫 페이지 혹은 매 페이지)
-                // 요구사항: "시트 팝업창의 맨위 합계금액만 따로 복사할수 있도록..." -> PDF 헤더에도 표시
                 doc.setFontSize(16);
+                doc.setFont('NanumGothic'); // 헤더 폰트 적용
                 doc.text(title, 14, 15);
 
                 doc.setFontSize(10);
@@ -96,15 +110,21 @@ export function DetailModal({ isOpen, onClose, title, data, totalAmount, dateRan
                     head: [tableColumn],
                     body: tableRows,
                     startY: 32,
-                    styles: { fontSize: 9, cellPadding: 2 },
-                    headStyles: { fillColor: [23, 37, 84] }, // Slate-900 like
-                    // 한글 폰트 적용 필요
-                    // font: 'Malgun' 
+                    styles: {
+                        fontSize: 9,
+                        cellPadding: 2,
+                        font: 'NanumGothic', // 테이블 폰트 적용
+                        fontStyle: 'normal'
+                    },
+                    headStyles: {
+                        fillColor: [23, 37, 84],
+                        font: 'NanumGothic'
+                    },
                 });
             });
 
             doc.save(`${title.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`);
-            alert('PDF 저장이 완료되었습니다. (한글이 깨질 경우 로컬 폰트 설정이 필요합니다)');
+            alert('PDF 저장이 완료되었습니다.');
         } catch (error) {
             console.error('PDF Export Error:', error);
             alert('PDF 저장 중 오류가 발생했습니다.');
