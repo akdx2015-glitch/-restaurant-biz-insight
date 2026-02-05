@@ -59,9 +59,20 @@ export function DetailModal({ isOpen, onClose, title, data, totalAmount, dateRan
                             <span className="bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded border border-blue-800/50">
                                 총 {data.length.toLocaleString()}건
                             </span>
-                            <span className="bg-slate-700 text-slate-300 px-2 py-0.5 rounded border border-slate-600">
-                                합계: {totalAmount.toLocaleString()}원
-                            </span>
+                            <div className="flex items-center gap-2 bg-slate-700 text-slate-300 px-2 py-0.5 rounded border border-slate-600">
+                                <span>합계: {totalAmount.toLocaleString()}원</span>
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        navigator.clipboard.writeText(totalAmount.toLocaleString());
+                                        alert('합계 금액이 복사되었습니다.');
+                                    }}
+                                    className="hover:text-white transition-colors"
+                                    title="합계 복사"
+                                >
+                                    <Copy size={13} />
+                                </button>
+                            </div>
                         </div>
                     </div>
                     <button
