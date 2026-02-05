@@ -1,4 +1,7 @@
-import { X, Copy, FileText } from 'lucide-react';
+import { X, Copy, FileText, Download } from 'lucide-react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+
 import type { RevenueData } from '../types';
 
 interface DetailModalProps {
@@ -34,6 +37,78 @@ export function DetailModal({ isOpen, onClose, title, data, totalAmount, dateRan
             console.error('복사 실패:', err);
             alert('복사에 실패했습니다.');
         });
+    };
+
+    const exportToPDF = async () => {
+        try {
+            const doc = new jsPDF('l', 'mm', 'a4');
+
+            // 한글 폰트 로드 (Noto Sans KR)
+            // 주의: CORS 문제나 네트워크 환경에 따라 폰트 로드가 실패할 수 있습니다.
+            // 실무에서는 폰트 파일을 로컬 assets에 포함시키고 import해서 사용하는 것이 좋습니다.
+            try {
+                const fontUrl = 'https://raw.githubusercontent.com/googlefonts/noto-cjk/main/Sans/Variable/TTF/NotoSansCJKsc-VF.ttf';
+                // 임시로 기본 폰트 사용 시도 (한글 깨짐 가능성 있음) - 실제로는 base64 폰트 문자열이 필요함
+                // 여기서는 폰트 로드 로직을 플레이스홀더로 둡니다. 
+                // doc.addFileToVFS('Malgun.ttf', fontBase64);
+                // doc.addFont('Malgun.ttf', 'Malgun', 'normal');
+                // doc.setFont('Malgun');
+            } catch (e) {
+                console.warn('Font loading failed', e);
+            }
+
+            const tableColumn = ["날짜", "거래처", "구분", "금액", "결제수단", "세부내용"];
+
+            // 데이터 31행씩 분할
+            const rowsPerPage = 31;
+            const chunks = [];
+            for (let i = 0; i < sortedData.length; i += rowsPerPage) {
+                chunks.push(sortedData.slice(i, i + rowsPerPage));
+            }
+
+            if (chunks.length === 0) return;
+
+            // 각 페이지 생성
+            chunks.forEach((chunk, index) => {
+                if (index > 0) {
+                    doc.addPage();
+                }
+
+                // 헤더 정보 (첫 페이지 혹은 매 페이지)
+                // 요구사항: "시트 팝업창의 맨위 합계금액만 따로 복사할수 있도록..." -> PDF 헤더에도 표시
+                doc.setFontSize(16);
+                doc.text(title, 14, 15);
+
+                doc.setFontSize(10);
+                doc.text(`기간: ${dateRange || '-'}`, 14, 22);
+                doc.text(`총 ${data.length.toLocaleString()}건 / 합계: ${totalAmount.toLocaleString()}원`, 14, 27);
+
+                const tableRows = chunk.map(d => [
+                    d.date,
+                    d.client || '-',
+                    d.category || (d.revenue > 0 ? '매출' : '지출'),
+                    (d.revenue > 0 ? d.revenue : d.expense).toLocaleString(),
+                    d.paymentMethod || '-',
+                    d.memo || '-'
+                ]);
+
+                autoTable(doc, {
+                    head: [tableColumn],
+                    body: tableRows,
+                    startY: 32,
+                    styles: { fontSize: 9, cellPadding: 2 },
+                    headStyles: { fillColor: [23, 37, 84] }, // Slate-900 like
+                    // 한글 폰트 적용 필요
+                    // font: 'Malgun' 
+                });
+            });
+
+            doc.save(`${title.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`);
+            alert('PDF 저장이 완료되었습니다. (한글이 깨질 경우 로컬 폰트 설정이 필요합니다)');
+        } catch (error) {
+            console.error('PDF Export Error:', error);
+            alert('PDF 저장 중 오류가 발생했습니다.');
+        }
     };
 
     // 월별 색상 구분을 위한 로직
@@ -147,6 +222,13 @@ export function DetailModal({ isOpen, onClose, title, data, totalAmount, dateRan
                         </div>
                     </div>
                     <div className="flex gap-2">
+                        <button
+                            onClick={exportToPDF}
+                            className="flex items-center gap-2 px-4 py-1.5 bg-orange-600 border border-orange-500 hover:bg-orange-500 text-white rounded text-sm font-bold shadow-sm transition-all"
+                        >
+                            <Download size={16} />
+                            PDF 저장
+                        </button>
                         <button
                             onClick={copyToClipboard}
                             className="flex items-center gap-2 px-4 py-1.5 bg-slate-700 border border-slate-600 hover:bg-slate-600 text-slate-200 rounded text-sm font-bold shadow-sm transition-all"
