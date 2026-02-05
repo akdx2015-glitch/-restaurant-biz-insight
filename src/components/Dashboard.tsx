@@ -4,7 +4,8 @@ import {
     BarChart, Bar, Cell, LineChart, Line, Legend, LabelList, ReferenceLine,
     PieChart, Pie
 } from 'recharts';
-import { TrendingUp, DollarSign, BarChart3, ChevronDown, Table as TableIcon, LineChart as LineIcon, Users, PieChart as PieChartIcon, FileText, MessageSquare, Send, X, Bot, Camera, FileBarChart } from 'lucide-react';
+import { TrendingUp, DollarSign, BarChart3, ChevronDown, Table as TableIcon, LineChart as LineIcon, Users, PieChart as PieChartIcon, FileText, MessageSquare, Send, X, Bot, Camera, FileBarChart, Copy } from 'lucide-react';
+
 import type { RevenueData } from '../types';
 import { DetailModal } from './DetailModal';
 import { ReportViewer } from './ReportViewer';
@@ -419,14 +420,38 @@ export function Dashboard({ data, startDate, ingredientData }: DashboardProps) {
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Revenue</span>
                         <div className="p-1.5 bg-blue-50 rounded-lg text-blue-600"><DollarSign size={14} /></div>
                     </div>
-                    <h3 className="text-xl font-bold text-slate-800">{totalRevenue.toLocaleString()}원</h3>
+                    <div className="flex items-center gap-2">
+                        <h3 className="text-xl font-bold text-slate-800">{totalRevenue.toLocaleString()}원</h3>
+                        <button
+                            onClick={() => {
+                                navigator.clipboard.writeText(totalRevenue.toLocaleString());
+                                alert('매출 금액이 복사되었습니다.');
+                            }}
+                            className="text-slate-400 hover:text-blue-600 transition-colors"
+                            title="금액 복사"
+                        >
+                            <Copy size={16} />
+                        </button>
+                    </div>
                 </div>
                 <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-100">
                     <div className="flex items-center justify-between mb-2">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Expense</span>
                         <div className="p-1.5 bg-red-50 rounded-lg text-red-600"><DollarSign size={14} /></div>
                     </div>
-                    <h3 className="text-xl font-bold text-slate-800">{totalExpense.toLocaleString()}원</h3>
+                    <div className="flex items-center gap-2">
+                        <h3 className="text-xl font-bold text-slate-800">{totalExpense.toLocaleString()}원</h3>
+                        <button
+                            onClick={() => {
+                                navigator.clipboard.writeText(totalExpense.toLocaleString());
+                                alert('지출 금액이 복사되었습니다.');
+                            }}
+                            className="text-slate-400 hover:text-red-600 transition-colors"
+                            title="금액 복사"
+                        >
+                            <Copy size={16} />
+                        </button>
+                    </div>
                 </div>
                 <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-100">
                     <div className="flex items-center justify-between mb-2">
@@ -437,6 +462,16 @@ export function Dashboard({ data, startDate, ingredientData }: DashboardProps) {
                         <h3 className={`text-xl font-bold ${totalProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                             {totalProfit.toLocaleString()}원
                         </h3>
+                        <button
+                            onClick={() => {
+                                navigator.clipboard.writeText(totalProfit.toLocaleString());
+                                alert('순이익 금액이 복사되었습니다.');
+                            }}
+                            className="text-slate-400 hover:text-green-600 transition-colors"
+                            title="금액 복사"
+                        >
+                            <Copy size={16} />
+                        </button>
                         <span className="text-[10px] text-slate-400 font-medium">({profitMargin.toFixed(1)}%)</span>
                     </div>
                 </div>
