@@ -73,60 +73,51 @@ export function DetailModal({ isOpen, onClose, title, data, totalAmount, dateRan
 
             const tableColumn = ["날짜", "거래처", "구분", "금액", "결제수단", "세부내용"];
 
-            // 데이터 31행씩 분할
-            const rowsPerPage = 31;
-            const chunks = [];
-            for (let i = 0; i < sortedData.length; i += rowsPerPage) {
-                chunks.push(sortedData.slice(i, i + rowsPerPage));
-            }
+            if (sortedData.length === 0) return;
 
-            if (chunks.length === 0) return;
+            // 헤더 정보 (첫 페이지)
+            doc.setFontSize(16);
+            doc.setFont('NanumGothic');
+            doc.text(title, 14, 15);
 
-            // 각 페이지 생성
-            chunks.forEach((chunk, index) => {
-                if (index > 0) {
-                    doc.addPage();
-                }
+            doc.setFontSize(10);
+            doc.text(`기간: ${dateRange || '-'}`, 14, 22);
+            doc.text(`총 ${data.length.toLocaleString()}건 / 합계: ${totalAmount.toLocaleString()}원`, 14, 27);
 
-                // 헤더 정보 (첫 페이지 혹은 매 페이지)
-                doc.setFontSize(16);
-                doc.setFont('NanumGothic'); // 헤더 폰트 적용
-                doc.text(title, 14, 15);
+            const tableRows = sortedData.map(d => [
+                d.date,
+                d.client || '-',
+                d.category || (d.revenue > 0 ? '매출' : '지출'),
+                (d.revenue > 0 ? d.revenue : d.expense).toLocaleString(),
+                d.paymentMethod || '-',
+                d.memo || '-'
+            ]);
 
-                doc.setFontSize(10);
-                doc.text(`기간: ${dateRange || '-'}`, 14, 22);
-                doc.text(`총 ${data.length.toLocaleString()}건 / 합계: ${totalAmount.toLocaleString()}원`, 14, 27);
-
-                const tableRows = chunk.map(d => [
-                    d.date,
-                    d.client || '-',
-                    d.category || (d.revenue > 0 ? '매출' : '지출'),
-                    (d.revenue > 0 ? d.revenue : d.expense).toLocaleString(),
-                    d.paymentMethod || '-',
-                    d.memo || '-'
-                ]);
-
-                autoTable(doc, {
-                    head: [tableColumn],
-                    body: tableRows,
-                    startY: 32,
-                    styles: {
-                        fontSize: 9,
-                        cellPadding: 2,
-                        font: 'NanumGothic', // 테이블 폰트 적용
-                        fontStyle: 'normal'
-                    },
-                    headStyles: {
-                        fillColor: [23, 37, 84],
-                        font: 'NanumGothic'
-                    },
-                });
-
-                // 페이지 번호 추가
-                const pageCount = chunks.length;
-                doc.setFontSize(10);
-                doc.text(`${index + 1} / ${pageCount}`, 297 / 2, 200, { align: 'center' });
+            autoTable(doc, {
+                head: [tableColumn],
+                body: tableRows,
+                startY: 32,
+                styles: {
+                    fontSize: 9,
+                    cellPadding: 2,
+                    font: 'NanumGothic',
+                    fontStyle: 'normal'
+                },
+                headStyles: {
+                    fillColor: [23, 37, 84],
+                    font: 'NanumGothic'
+                },
+                // 페이지 넘김 시 헤더 자동 반복됨
             });
+
+            // 페이지 번호 추가 (전체 페이지 수 계산 후 일괄 적용)
+            const internal = doc.internal as any;
+            const totalPages = internal.getNumberOfPages();
+            for (let i = 1; i <= totalPages; i++) {
+                doc.setPage(i);
+                doc.setFontSize(10);
+                doc.text(`${i} / ${totalPages}`, 297 / 2, 200, { align: 'center' });
+            }
 
             doc.save(`${title.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`);
             alert('PDF 저장이 완료되었습니다.');
