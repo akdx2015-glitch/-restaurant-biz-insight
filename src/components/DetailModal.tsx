@@ -121,6 +121,11 @@ export function DetailModal({ isOpen, onClose, title, data, totalAmount, dateRan
                         font: 'NanumGothic'
                     },
                 });
+
+                // 페이지 번호 추가
+                const pageCount = chunks.length;
+                doc.setFontSize(10);
+                doc.text(`${index + 1} / ${pageCount}`, 297 / 2, 200, { align: 'center' });
             });
 
             doc.save(`${title.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`);
