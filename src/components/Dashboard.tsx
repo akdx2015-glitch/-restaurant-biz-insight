@@ -12,6 +12,8 @@ import { ReportViewer } from './ReportViewer';
 import { CostReportGenerator } from './CostReportGenerator';
 import { ErrorBoundary } from './ErrorBoundary';
 import html2canvas from 'html2canvas';
+import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, AlignmentType, BorderStyle } from 'docx';
+import { saveAs } from 'file-saver';
 
 import { CATEGORY_RULES, findCategory, getCostType } from '../utils/costUtils';
 // import jsPDF from 'jspdf'; // 동적 임포트 사용으로 제거
@@ -41,6 +43,7 @@ export function Dashboard({ data, startDate, endDate, ingredientData }: Dashboar
 
     // AI Chat State
     const [isAIChatOpen, setIsAIChatOpen] = useState(false);
+    const [isSummaryPopupOpen, setIsSummaryPopupOpen] = useState(false); // Summary Popup State
     const [chatInput, setChatInput] = useState('');
     const [chatMessages, setChatMessages] = useState<Array<{ id: string; sender: 'user' | 'ai'; text: string; timestamp: Date }>>([
         {
@@ -540,146 +543,190 @@ export function Dashboard({ data, startDate, endDate, ingredientData }: Dashboar
                         startDate.substring(0, 4) === endDate.substring(0, 4);
 
                     return (
-                        <button
-                            onClick={async () => {
-                                if (!isMonthly) return;
-                                try {
-                                    const { jsPDF } = await import('jspdf');
-                                    await import('jspdf-autotable');
+                        <>
+                            <button
+                                onClick={() => {
+                                    if (isMonthly) setIsSummaryPopupOpen(true);
+                                }}
+                                disabled={!isMonthly}
+                                className={`ml-auto flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all duration-300 shadow-md border ${isMonthly
+                                        ? 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-500 cursor-pointer'
+                                        : 'bg-slate-200 text-slate-400 border-slate-200 cursor-not-allowed'
+                                    }`}
+                                title={isMonthly ? "월별 요약 리포트 내보내기" : "월 단위로 기간을 선택해야 활성화됩니다"}
+                            >
+                                <FileBarChart size={14} />
+                                <span>월매출/지출요약</span>
+                            </button>
 
-                                    const doc = new jsPDF('p', 'mm', 'a4');
+                            {/* Summary Selection Popup */}
+                            {isSummaryPopupOpen && (
+                                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">
+                                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden transform scale-100 transition-all">
+                                        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                                            <h3 className="font-bold text-slate-800 text-lg">요약 리포트 내보내기</h3>
+                                            <button onClick={() => setIsSummaryPopupOpen(false)} className="text-slate-400 hover:text-slate-600">
+                                                <X size={20} />
+                                            </button>
+                                        </div>
+                                        <div className="p-6 space-y-3">
+                                            <button
+                                                onClick={async () => {
+                                                    try {
+                                                        const year = startDate.substring(0, 4);
+                                                        const month = startDate.substring(5, 7);
 
-                                    // 한글 폰트 로드 (NanumGothic)
-                                    try {
-                                        const response = await fetch('https://raw.githubusercontent.com/google/fonts/main/ofl/nanumgothic/NanumGothic-Regular.ttf');
-                                        if (response.ok) {
-                                            const blob = await response.blob();
-                                            const reader = new FileReader();
+                                                        // Revenue Calculation
+                                                        const revenueItems = data.filter(d => d.revenue > 0);
+                                                        const totalRevenue = revenueItems.reduce((acc, curr) => acc + curr.revenue, 0);
+                                                        const revenueByClient: Record<string, number> = {};
+                                                        revenueItems.forEach(item => {
+                                                            const client = item.client || '일반고객';
+                                                            revenueByClient[client] = (revenueByClient[client] || 0) + item.revenue;
+                                                        });
 
-                                            await new Promise((resolve, reject) => {
-                                                reader.onload = (e) => {
-                                                    const result = e.target?.result as string;
-                                                    const base64Font = result.split(',')[1];
-                                                    doc.addFileToVFS('NanumGothic.ttf', base64Font);
-                                                    doc.addFont('NanumGothic.ttf', 'NanumGothic', 'normal');
-                                                    doc.setFont('NanumGothic');
-                                                    resolve(null);
-                                                };
-                                                reader.onerror = reject;
-                                                reader.readAsDataURL(blob);
-                                            });
-                                        }
-                                    } catch (e) {
-                                        console.warn('Font loading failed', e);
-                                    }
+                                                        // Expense Calculation
+                                                        const expenseItems = data.filter(d => d.expense > 0);
+                                                        const totalExpense = expenseItems.reduce((acc, curr) => acc + curr.expense, 0);
+                                                        const expenseByCategory: Record<string, number> = {};
+                                                        expenseItems.forEach(item => {
+                                                            const type = item.category || '기타';
+                                                            expenseByCategory[type] = (expenseByCategory[type] || 0) + item.expense;
+                                                        });
 
-                                    const year = startDate.substring(0, 4);
-                                    const month = startDate.substring(5, 7);
+                                                        const doc = new Document({
+                                                            sections: [{
+                                                                properties: {},
+                                                                children: [
+                                                                    new Paragraph({
+                                                                        children: [new TextRun({ text: `${year}년 ${month}월 코스타푸드 매출/지출`, bold: true, size: 44 })], // 22pt * 2
+                                                                        alignment: AlignmentType.CENTER,
+                                                                        spacing: { after: 400 },
+                                                                    }),
 
-                                    // Title
-                                    doc.setFontSize(22);
-                                    doc.text(`${year}년 ${month}월 코스타푸드 매출/지출`, 105, 20, { align: 'center' });
+                                                                    // Revenue Section
+                                                                    new Paragraph({
+                                                                        children: [new TextRun({ text: "<매 출>", bold: true, size: 36 })],
+                                                                        alignment: AlignmentType.CENTER,
+                                                                        spacing: { before: 200, after: 300 },
+                                                                    }),
+                                                                    ...Object.entries(revenueByClient).sort((a, b) => b[1] - a[1]).map(([client, amount]) => {
+                                                                        return new Paragraph({
+                                                                            children: [
+                                                                                new TextRun({ text: client, size: 22 }),
+                                                                                new TextRun({ text: `\t${amount.toLocaleString()}원`, size: 22, bold: true }),
+                                                                            ],
+                                                                            tabStops: [{ type: "right", position: 9000 }], // Adjust tab position
+                                                                        });
+                                                                    }),
+                                                                    new Paragraph({
+                                                                        children: [new TextRun({ text: `합계   ${totalRevenue.toLocaleString()}원`, bold: true, size: 32 })],
+                                                                        alignment: AlignmentType.CENTER,
+                                                                        spacing: { before: 200, after: 600 },
+                                                                    }),
 
-                                    // Revenue Calculation
-                                    const revenueItems = data.filter(d => d.revenue > 0);
-                                    const totalRevenue = revenueItems.reduce((acc, curr) => acc + curr.revenue, 0);
+                                                                    // Expense Section
+                                                                    new Paragraph({
+                                                                        children: [new TextRun({ text: "<지 출>", bold: true, size: 36 })],
+                                                                        alignment: AlignmentType.CENTER,
+                                                                        spacing: { before: 200, after: 300 },
+                                                                    }),
+                                                                    ...Object.entries(expenseByCategory).sort((a, b) => b[1] - a[1]).map(([cat, amount]) => {
+                                                                        return new Paragraph({
+                                                                            children: [
+                                                                                new TextRun({ text: cat, size: 22 }),
+                                                                                new TextRun({ text: `\t${amount.toLocaleString()}원`, size: 22, bold: true }),
+                                                                            ],
+                                                                            tabStops: [{ type: "right", position: 9000 }],
+                                                                        });
+                                                                    }),
+                                                                    new Paragraph({
+                                                                        children: [new TextRun({ text: `합계   ${totalExpense.toLocaleString()}원`, bold: true, size: 32 })],
+                                                                        alignment: AlignmentType.CENTER,
+                                                                        spacing: { before: 200 },
+                                                                    }),
+                                                                ],
+                                                            }],
+                                                        });
 
-                                    // Group Revenue by Client
-                                    const revenueByClient: Record<string, number> = {};
-                                    revenueItems.forEach(item => {
-                                        const client = item.client || '일반고객';
-                                        revenueByClient[client] = (revenueByClient[client] || 0) + item.revenue;
-                                    });
+                                                        const blob = await Packer.toBlob(doc);
+                                                        saveAs(blob, `${year}년_${month}월_코스타푸드_매출지출요약.docx`);
+                                                        setIsSummaryPopupOpen(false);
+                                                    } catch (error) {
+                                                        console.error('Word Export Error:', error);
+                                                        alert('Word 파일 생성 중 오류가 발생했습니다.');
+                                                    }
+                                                }}
+                                                className="w-full flex items-center justify-center gap-3 p-4 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl border border-blue-200 transition-all group"
+                                            >
+                                                <div className="p-2 bg-blue-200 rounded-lg group-hover:scale-110 transition-transform">
+                                                    <FileText size={24} />
+                                                </div>
+                                                <div className="text-left">
+                                                    <div className="font-bold text-base">Word 다운로드</div>
+                                                    <div className="text-xs text-blue-500 opacity-80">.docx 파일로 저장합니다</div>
+                                                </div>
+                                            </button>
 
-                                    // Expense Calculation
-                                    const expenseItems = data.filter(d => d.expense > 0);
-                                    const totalExpense = expenseItems.reduce((acc, curr) => acc + curr.expense, 0);
+                                            <button
+                                                onClick={() => {
+                                                    const year = startDate.substring(0, 4);
+                                                    const month = startDate.substring(5, 7);
 
-                                    // Group Expense by Category
-                                    const expenseByCategory: Record<string, number> = {};
-                                    expenseItems.forEach(item => {
-                                        const type = item.category || '기타'; // Use 'category' field directly
-                                        expenseByCategory[type] = (expenseByCategory[type] || 0) + item.expense;
-                                    });
+                                                    const revenueItems = data.filter(d => d.revenue > 0);
+                                                    const totalRevenue = revenueItems.reduce((acc, curr) => acc + curr.revenue, 0);
+                                                    const revenueByClient: Record<string, number> = {};
+                                                    revenueItems.forEach(item => {
+                                                        const client = item.client || '일반고객';
+                                                        revenueByClient[client] = (revenueByClient[client] || 0) + item.revenue;
+                                                    });
 
-                                    let yPos = 40;
+                                                    const expenseItems = data.filter(d => d.expense > 0);
+                                                    const totalExpense = expenseItems.reduce((acc, curr) => acc + curr.expense, 0);
+                                                    const expenseByCategory: Record<string, number> = {};
+                                                    expenseItems.forEach(item => {
+                                                        const type = item.category || '기타';
+                                                        expenseByCategory[type] = (expenseByCategory[type] || 0) + item.expense;
+                                                    });
 
-                                    // 1. Revenue Section
-                                    doc.setFontSize(18);
-                                    doc.text('<매 출>', 105, yPos, { align: 'center' });
-                                    yPos += 15;
+                                                    const text = `
+[${year}년 ${month}월 코스타푸드 매출/지출]
 
-                                    doc.setFontSize(11);
-                                    Object.entries(revenueByClient).sort((a, b) => b[1] - a[1]).forEach(([client, amount]) => {
-                                        doc.text(client, 40, yPos);
-                                        doc.text(`${amount.toLocaleString()}원`, 170, yPos, { align: 'right' });
-                                        yPos += 8;
-                                    });
+<매 출>
+${Object.entries(revenueByClient).sort((a, b) => b[1] - a[1]).map(([c, a]) => `${c}\t${a.toLocaleString()}원`).join('\n')}
 
-                                    yPos += 5;
-                                    doc.setFontSize(16);
-                                    doc.text(`합계   ${totalRevenue.toLocaleString()}원`, 105, yPos, { align: 'center' });
+합계\t${totalRevenue.toLocaleString()}원
 
-                                    // Detailed breakdown for '일반고객'
-                                    if (revenueByClient['일반고객']) {
-                                        yPos += 10;
-                                        doc.setFontSize(9);
-                                        const generalItems = revenueItems.filter(d => (d.client || '일반고객') === '일반고객');
-                                        const generalBreakdown: Record<string, number> = {};
-                                        generalItems.forEach(item => {
-                                            const subCat = item.category || '기타';
-                                            generalBreakdown[subCat] = (generalBreakdown[subCat] || 0) + item.revenue;
-                                        });
+<지 출>
+${Object.entries(expenseByCategory).sort((a, b) => b[1] - a[1]).map(([c, a]) => `${c}\t${a.toLocaleString()}원`).join('\n')}
 
-                                        doc.text('일반고객 -', 60, yPos);
-                                        let first = true;
-                                        Object.entries(generalBreakdown).forEach(([sub, amt]) => {
-                                            if (!first) yPos += 5;
-                                            doc.text(`${sub}`, 80, yPos);
-                                            doc.text(`${amt.toLocaleString()}원`, 160, yPos, { align: 'right' });
-                                            first = false;
-                                        });
-                                    }
+합계\t${totalExpense.toLocaleString()}원
+                                                     `.trim();
 
-                                    yPos += 30; // Spacing between Revenue and Expense
-
-                                    // 2. Expense Section
-                                    doc.setFontSize(18);
-                                    doc.text('<지 출>', 105, yPos, { align: 'center' });
-                                    yPos += 15;
-
-                                    doc.setFontSize(11);
-                                    const sortedExpense = Object.entries(expenseByCategory).sort((a, b) => b[1] - a[1]);
-                                    sortedExpense.forEach(([cat, amount]) => {
-                                        doc.text(cat, 40, yPos);
-                                        doc.text(`${amount.toLocaleString()}원`, 170, yPos, { align: 'right' });
-                                        yPos += 8;
-                                    });
-
-                                    yPos += 5;
-                                    doc.setFontSize(16);
-                                    doc.text(`합계   ${totalExpense.toLocaleString()}원`, 105, yPos, { align: 'center' });
-
-                                    doc.save(`${year}년_${month}월_코스타푸드_매출지출요약.pdf`);
-
-                                } catch (error) {
-                                    console.error('PDF Generation Error:', error);
-                                    alert('PDF 생성 중 오류가 발생했습니다.');
-                                }
-                            }}
-                            disabled={!isMonthly}
-                            className={`ml-auto flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all duration-300 shadow-md border ${isMonthly
-                                    ? 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-500 cursor-pointer'
-                                    : 'bg-slate-200 text-slate-400 border-slate-200 cursor-not-allowed'
-                                }`}
-                            title={isMonthly ? "월별 요약 리포트 다운로드" : "월 단위로 기간을 선택해야 활성화됩니다"}
-                        >
-                            <FileBarChart size={14} />
-                            <span>월매출/지출요약</span>
-                        </button>
+                                                    navigator.clipboard.writeText(text).then(() => {
+                                                        alert('클립보드에 복사되었습니다. 붙여넣기(Ctrl+V) 하세요.');
+                                                        setIsSummaryPopupOpen(false);
+                                                    }).catch(() => alert('복사에 실패했습니다.'));
+                                                }}
+                                                className="w-full flex items-center justify-center gap-3 p-4 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl border border-slate-200 transition-all group"
+                                            >
+                                                <div className="p-2 bg-slate-200 rounded-lg group-hover:scale-110 transition-transform">
+                                                    <Copy size={24} />
+                                                </div>
+                                                <div className="text-left">
+                                                    <div className="font-bold text-base">문서용 복사</div>
+                                                    <div className="text-xs text-slate-500 opacity-80">텍스트로 클립보드에 복사합니다</div>
+                                                </div>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </>
                     );
                 })()}
 
+                {/* 보고서 생성 버튼 - 네비게이션 바 우측 끝 */}
                 <button
                     onClick={() => setIsReportOpen(true)}
                     className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-full text-xs font-bold transition-all duration-300 shadow-md border border-slate-700"
@@ -700,416 +747,420 @@ export function Dashboard({ data, startDate, endDate, ingredientData }: Dashboar
                 </button>
             </div>
 
-            {activeFeature === 'trend' && (
-                <div className="space-y-6 animate-in fade-in slide-in-from-top-4 duration-500 pb-8">
-                    <div id="chart-trend-analysis" className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 overflow-visible relative">
-                        <div className="flex items-center justify-between mb-8 border-b border-slate-50 pb-4">
-                            <div className="flex items-center gap-2">
-                                <div className="p-2 bg-blue-50 rounded-lg text-blue-600"><LineIcon size={18} /></div>
-                                <h4 className="font-bold text-slate-800 text-base">{isDaily ? '일별' : '월별'} 매출/지출</h4>
+            {
+                activeFeature === 'trend' && (
+                    <div className="space-y-6 animate-in fade-in slide-in-from-top-4 duration-500 pb-8">
+                        <div id="chart-trend-analysis" className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 overflow-visible relative">
+                            <div className="flex items-center justify-between mb-8 border-b border-slate-50 pb-4">
+                                <div className="flex items-center gap-2">
+                                    <div className="p-2 bg-blue-50 rounded-lg text-blue-600"><LineIcon size={18} /></div>
+                                    <h4 className="font-bold text-slate-800 text-base">{isDaily ? '일별' : '월별'} 매출/지출</h4>
+                                </div>
+                                <button
+                                    onClick={() => handleCaptureChart('chart-trend-analysis', '추이 분석')}
+                                    className="capture-button flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-medium transition-colors"
+                                    title="차트 캡처"
+                                >
+                                    <Camera size={14} />
+                                    <span>캡처</span>
+                                </button>
                             </div>
-                            <button
-                                onClick={() => handleCaptureChart('chart-trend-analysis', '추이 분석')}
-                                className="capture-button flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-medium transition-colors"
-                                title="차트 캡처"
-                            >
-                                <Camera size={14} />
-                                <span>캡처</span>
-                            </button>
-                        </div>
-                        <div className="h-[350px] w-full mt-4 relative">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={chartData} margin={{ top: 60, right: 30, left: 10, bottom: 20 }}>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                    <XAxis dataKey="date" tick={{ fill: '#94a3b8', fontSize: 10 }} tickLine={false} axisLine={false} />
-                                    <YAxis
-                                        domain={yDomain as any}
-                                        ticks={yTicks}
-                                        tick={{ fill: '#94a3b8', fontSize: 11 }}
-                                        tickLine={false}
-                                        axisLine={false}
-                                        tickFormatter={(val) => `${val.toLocaleString()}만`}
-                                    />
-                                    <Tooltip
-                                        content={({ active, payload, label }) => {
-                                            if (active && payload && payload.length) {
-                                                return (
-                                                    <div className="bg-white p-3 rounded-xl shadow-xl border border-slate-200" style={{ backgroundColor: 'white' }}>
-                                                        <p className="custom-tooltip-label mb-2 border-b border-slate-100 pb-1"
-                                                            style={{
-                                                                color: '#000000',
-                                                                fontSize: '16px',
-                                                                fontWeight: '900',
-                                                                textShadow: 'none',
-                                                                margin: 0,
-                                                                paddingBottom: '4px'
-                                                            }}>
-                                                            {label}
-                                                        </p>
-                                                        {payload.map((entry: any, index: number) => (
-                                                            <p key={index} style={{ color: entry.color }} className="text-sm font-bold my-1 flex justify-between gap-4">
-                                                                <span>{entry.name} :</span>
-                                                                <span>
-                                                                    {entry.name === "총 매출" ? entry.payload.rawRevenue :
-                                                                        entry.name === "총 지출" ? entry.payload.rawExpense :
-                                                                            entry.value}
-                                                                </span>
-                                                            </p>
-                                                        ))}
-                                                    </div>
-                                                );
-                                            }
-                                            return null;
-                                        }}
-                                    />
-                                    {isDaily && (peakRev > 200 || peakExp > 200) && (
-                                        <ReferenceLine
-                                            y={200}
-                                            stroke="#f59e0b"
-                                            strokeDasharray="3 3"
+                            <div className="h-[350px] w-full mt-4 relative">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={chartData} margin={{ top: 60, right: 30, left: 10, bottom: 20 }}>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                        <XAxis dataKey="date" tick={{ fill: '#94a3b8', fontSize: 10 }} tickLine={false} axisLine={false} />
+                                        <YAxis
+                                            domain={yDomain as any}
+                                            ticks={yTicks}
+                                            tick={{ fill: '#94a3b8', fontSize: 11 }}
+                                            tickLine={false}
+                                            axisLine={false}
+                                            tickFormatter={(val) => `${val.toLocaleString()}만`}
                                         />
-                                    )}
-                                    {!isDaily && (
-                                        <ReferenceLine
-                                            y={peakRev}
-                                            stroke="#f59e0b"
-                                            strokeDasharray="3 3"
-                                            label={{
-                                                position: 'top',
-                                                value: `MAX: ${peakRev.toLocaleString()}만`,
-                                                fill: '#d97706',
-                                                fontSize: 12,
-                                                fontWeight: 'bold'
+                                        <Tooltip
+                                            content={({ active, payload, label }) => {
+                                                if (active && payload && payload.length) {
+                                                    return (
+                                                        <div className="bg-white p-3 rounded-xl shadow-xl border border-slate-200" style={{ backgroundColor: 'white' }}>
+                                                            <p className="custom-tooltip-label mb-2 border-b border-slate-100 pb-1"
+                                                                style={{
+                                                                    color: '#000000',
+                                                                    fontSize: '16px',
+                                                                    fontWeight: '900',
+                                                                    textShadow: 'none',
+                                                                    margin: 0,
+                                                                    paddingBottom: '4px'
+                                                                }}>
+                                                                {label}
+                                                            </p>
+                                                            {payload.map((entry: any, index: number) => (
+                                                                <p key={index} style={{ color: entry.color }} className="text-sm font-bold my-1 flex justify-between gap-4">
+                                                                    <span>{entry.name} :</span>
+                                                                    <span>
+                                                                        {entry.name === "총 매출" ? entry.payload.rawRevenue :
+                                                                            entry.name === "총 지출" ? entry.payload.rawExpense :
+                                                                                entry.value}
+                                                                    </span>
+                                                                </p>
+                                                            ))}
+                                                        </div>
+                                                    );
+                                                }
+                                                return null;
                                             }}
                                         />
-                                    )}
-                                    <Legend verticalAlign="top" height={40} />
-                                    <Line
-                                        type="monotone"
-                                        dataKey="valRevenue"
-                                        name="총 매출"
-                                        stroke="#3b82f6"
-                                        strokeWidth={3}
-                                        dot={{ r: 4, fill: '#3b82f6' }}
-                                    >
-                                        <LabelList dataKey="valRevenue" content={createCustomLabel('revenue')} />
-                                    </Line>
-                                    <Line
-                                        type="monotone"
-                                        dataKey="valExpense"
-                                        name="총 지출"
-                                        stroke="#ef4444"
-                                        strokeWidth={3}
-                                        dot={{ r: 4, fill: '#ef4444' }}
-                                    >
-                                        <LabelList dataKey="valExpense" content={createCustomLabel('expense')} />
-                                    </Line>
-                                </LineChart>
-                            </ResponsiveContainer>
+                                        {isDaily && (peakRev > 200 || peakExp > 200) && (
+                                            <ReferenceLine
+                                                y={200}
+                                                stroke="#f59e0b"
+                                                strokeDasharray="3 3"
+                                            />
+                                        )}
+                                        {!isDaily && (
+                                            <ReferenceLine
+                                                y={peakRev}
+                                                stroke="#f59e0b"
+                                                strokeDasharray="3 3"
+                                                label={{
+                                                    position: 'top',
+                                                    value: `MAX: ${peakRev.toLocaleString()}만`,
+                                                    fill: '#d97706',
+                                                    fontSize: 12,
+                                                    fontWeight: 'bold'
+                                                }}
+                                            />
+                                        )}
+                                        <Legend verticalAlign="top" height={40} />
+                                        <Line
+                                            type="monotone"
+                                            dataKey="valRevenue"
+                                            name="총 매출"
+                                            stroke="#3b82f6"
+                                            strokeWidth={3}
+                                            dot={{ r: 4, fill: '#3b82f6' }}
+                                        >
+                                            <LabelList dataKey="valRevenue" content={createCustomLabel('revenue')} />
+                                        </Line>
+                                        <Line
+                                            type="monotone"
+                                            dataKey="valExpense"
+                                            name="총 지출"
+                                            stroke="#ef4444"
+                                            strokeWidth={3}
+                                            dot={{ r: 4, fill: '#ef4444' }}
+                                        >
+                                            <LabelList dataKey="valExpense" content={createCustomLabel('expense')} />
+                                        </Line>
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            </div>
                         </div>
-                    </div>
 
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                        <div className="flex items-center gap-2 mb-8 border-b border-slate-50 pb-4">
-                            <div className="p-2 bg-green-50 rounded-lg text-green-600"><TrendingUp size={18} /></div>
-                            <h4 className="font-bold text-slate-800 text-base">{isDaily ? '일별' : '월별'} 순이익</h4>
+                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                            <div className="flex items-center gap-2 mb-8 border-b border-slate-50 pb-4">
+                                <div className="p-2 bg-green-50 rounded-lg text-green-600"><TrendingUp size={18} /></div>
+                                <h4 className="font-bold text-slate-800 text-base">{isDaily ? '일별' : '월별'} 순이익</h4>
+                            </div>
+                            <div className="h-[300px] w-full">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={chartData} margin={{ top: 20, right: 30, left: 10, bottom: 0 }}>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                        <XAxis dataKey="date" tick={{ fill: '#94a3b8', fontSize: 10 }} tickLine={false} axisLine={false} />
+                                        <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(val) => `${val.toLocaleString()}만`} />
+                                        <Tooltip
+                                            contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
+                                            formatter={(_val: any, _name: any, props: any) => props?.payload?.rawProfit || _val}
+                                        />
+                                        <ReferenceLine y={peakProfit} stroke="#10b981" strokeDasharray="3 3" />
+                                        <Bar dataKey="valProfit" name="순이익" radius={[4, 4, 0, 0]}>
+                                            {chartData.map((entry, index) => (
+                                                <Cell key={`cell-${index}`} fill={entry.valProfit >= 0 ? '#ef4444' : '#3b82f6'} />
+                                            ))}
+                                        </Bar>
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
                         </div>
-                        <div className="h-[300px] w-full">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={chartData} margin={{ top: 20, right: 30, left: 10, bottom: 0 }}>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                    <XAxis dataKey="date" tick={{ fill: '#94a3b8', fontSize: 10 }} tickLine={false} axisLine={false} />
-                                    <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(val) => `${val.toLocaleString()}만`} />
-                                    <Tooltip
-                                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
-                                        formatter={(_val: any, _name: any, props: any) => props?.payload?.rawProfit || _val}
-                                    />
-                                    <ReferenceLine y={peakProfit} stroke="#10b981" strokeDasharray="3 3" />
-                                    <Bar dataKey="valProfit" name="순이익" radius={[4, 4, 0, 0]}>
-                                        {chartData.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={entry.valProfit >= 0 ? '#ef4444' : '#3b82f6'} />
-                                        ))}
-                                    </Bar>
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </div>
 
-                    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                        <div className="px-6 py-4 border-b border-slate-50 bg-slate-50/50 flex items-center gap-2">
-                            <TableIcon size={18} className="text-slate-500" />
-                            <h4 className="font-bold text-slate-800 text-sm">경영 요약 데이터</h4>
-                        </div>
-                        <div className="overflow-x-auto max-h-[400px]">
-                            <table className="w-full text-left border-collapse">
-                                <thead className="sticky top-0 z-10 bg-slate-50">
-                                    <tr>
-                                        <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase border-b border-slate-100">{isDaily ? '날짜' : '월'}</th>
-                                        <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase border-b border-slate-100">매출</th>
-                                        <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase border-b border-slate-100">지출</th>
-                                        <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase border-b border-slate-100 text-right">순이익</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {chartData.map((row, idx) => (
-                                        <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                                            <td className="px-6 py-4 text-sm font-bold text-slate-700 border-b border-slate-50">{row.date}</td>
-                                            <td className="px-6 py-4 text-sm text-slate-600 border-b border-slate-50">{row.rawRevenue}</td>
-                                            <td className="px-6 py-4 text-sm text-slate-600 border-b border-slate-50">{row.rawExpense}</td>
-                                            <td className={`px-6 py-4 text-sm font-bold border-b border-slate-50 text-right ${row.valProfit >= 0 ? 'text-slate-800' : 'text-blue-600'}`}>{row.rawProfit}</td>
+                        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                            <div className="px-6 py-4 border-b border-slate-50 bg-slate-50/50 flex items-center gap-2">
+                                <TableIcon size={18} className="text-slate-500" />
+                                <h4 className="font-bold text-slate-800 text-sm">경영 요약 데이터</h4>
+                            </div>
+                            <div className="overflow-x-auto max-h-[400px]">
+                                <table className="w-full text-left border-collapse">
+                                    <thead className="sticky top-0 z-10 bg-slate-50">
+                                        <tr>
+                                            <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase border-b border-slate-100">{isDaily ? '날짜' : '월'}</th>
+                                            <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase border-b border-slate-100">매출</th>
+                                            <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase border-b border-slate-100">지출</th>
+                                            <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase border-b border-slate-100 text-right">순이익</th>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody>
+                                        {chartData.map((row, idx) => (
+                                            <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                                                <td className="px-6 py-4 text-sm font-bold text-slate-700 border-b border-slate-50">{row.date}</td>
+                                                <td className="px-6 py-4 text-sm text-slate-600 border-b border-slate-50">{row.rawRevenue}</td>
+                                                <td className="px-6 py-4 text-sm text-slate-600 border-b border-slate-50">{row.rawExpense}</td>
+                                                <td className={`px-6 py-4 text-sm font-bold border-b border-slate-50 text-right ${row.valProfit >= 0 ? 'text-slate-800' : 'text-blue-600'}`}>{row.rawProfit}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
-            {activeFeature === 'category' && (
-                <div className="space-y-6 animate-in fade-in slide-in-from-top-4 duration-500 pb-8">
-                    {(() => {
-                        const { categories = [], pieData = [], summaryPieData = [], trend = [], totalRevenue: totalCatRevenue = 0 } = categoryData || {};
-                        // Expanded color palette for better distinction (16 colors)
-                        const COLORS = [
-                            '#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#6366f1', '#ec4899', '#8b5cf6', '#14b8a6',
-                            '#f43f5e', '#fb923c', '#0ea5e9', '#84cc16', '#a855f7', '#d946ef', '#06b6d4', '#d1d5db'
-                        ];
+            {
+                activeFeature === 'category' && (
+                    <div className="space-y-6 animate-in fade-in slide-in-from-top-4 duration-500 pb-8">
+                        {(() => {
+                            const { categories = [], pieData = [], summaryPieData = [], trend = [], totalRevenue: totalCatRevenue = 0 } = categoryData || {};
+                            // Expanded color palette for better distinction (16 colors)
+                            const COLORS = [
+                                '#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#6366f1', '#ec4899', '#8b5cf6', '#14b8a6',
+                                '#f43f5e', '#fb923c', '#0ea5e9', '#84cc16', '#a855f7', '#d946ef', '#06b6d4', '#d1d5db'
+                            ];
 
-                        const getCatColor = (name: string) => {
-                            const allUniqueNames = (summaryPieData || []).map((d: any) => d.name);
-                            const idx = allUniqueNames.indexOf(name);
-                            if (idx === -1) return '#6b7280';
-                            const totalCount = allUniqueNames.length;
+                            const getCatColor = (name: string) => {
+                                const allUniqueNames = (summaryPieData || []).map((d: any) => d.name);
+                                const idx = allUniqueNames.indexOf(name);
+                                if (idx === -1) return '#6b7280';
+                                const totalCount = allUniqueNames.length;
 
-                            if (totalCount > COLORS.length && idx >= totalCount - 2) {
-                                return COLORS[COLORS.length - 1];
-                            }
-                            return COLORS[idx % COLORS.length];
-                        };
+                                if (totalCount > COLORS.length && idx >= totalCount - 2) {
+                                    return COLORS[COLORS.length - 1];
+                                }
+                                return COLORS[idx % COLORS.length];
+                            };
 
-                        // Stable component for LabelList
-                        const CategoryLabel = (props: any) => {
-                            const { x, y, index, dataKey } = props;
-                            if (index === undefined || !trend || !trend[index]) return null;
+                            // Stable component for LabelList
+                            const CategoryLabel = (props: any) => {
+                                const { x, y, index, dataKey } = props;
+                                if (index === undefined || !trend || !trend[index]) return null;
 
-                            const cat = typeof dataKey === 'string' ? dataKey.replace('val_', '') : '';
-                            if (!cat) return null;
+                                const cat = typeof dataKey === 'string' ? dataKey.replace('val_', '') : '';
+                                if (!cat) return null;
 
-                            const d = trend[index];
-                            const realVal = d?.[`display_${cat}`];
-                            if (!isDaily || realVal === undefined || realVal < 199.9) return null;
+                                const d = trend[index];
+                                const realVal = d?.[`display_${cat}`];
+                                if (!isDaily || realVal === undefined || realVal < 199.9) return null;
 
-                            const isFocused = (focusedLabel as any)?.index === index && (focusedLabel as any)?.catKey === cat;
-                            const verticalOffset = isFocused ? -45 : -25;
-                            const color = getCatColor(cat);
+                                const isFocused = (focusedLabel as any)?.index === index && (focusedLabel as any)?.catKey === cat;
+                                const verticalOffset = isFocused ? -45 : -25;
+                                const color = getCatColor(cat);
+
+                                return (
+                                    <g
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setFocusedLabel({ index, type: 'revenue', catKey: cat } as any);
+                                        }}
+                                        style={{ cursor: 'pointer', pointerEvents: 'all' }}
+                                    >
+                                        <rect x={x - 45} y={y + verticalOffset - 20} width={90} height={24} rx={6} fill={color} stroke="white" strokeWidth={isFocused ? 2.5 : 1.5} />
+                                        <text x={x} y={y + verticalOffset - 4} fill="white" fontSize={10} fontWeight="900" textAnchor="middle">{`MAX: ${realVal.toLocaleString()}만`}</text>
+                                    </g>
+                                );
+                            };
+
+                            const renderRevenueLabel = ({ x, y, cx, name, percent, value }: any) => {
+                                if ((percent || 0) < 0.03) return null; // Hide small segments (< 3%) to avoid overlap
+                                return (
+                                    <text x={x} y={y} fill={getCatColor(name)} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize={11}>
+                                        <tspan fontWeight="normal">{`${name} (${((percent || 0) * 100).toFixed(0)}%) `}</tspan>
+                                        <tspan fontWeight="bold">{`${(value || 0).toLocaleString()}원`}</tspan>
+                                    </text>
+                                );
+                            };
 
                             return (
-                                <g
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        setFocusedLabel({ index, type: 'revenue', catKey: cat } as any);
-                                    }}
-                                    style={{ cursor: 'pointer', pointerEvents: 'all' }}
-                                >
-                                    <rect x={x - 45} y={y + verticalOffset - 20} width={90} height={24} rx={6} fill={color} stroke="white" strokeWidth={isFocused ? 2.5 : 1.5} />
-                                    <text x={x} y={y + verticalOffset - 4} fill="white" fontSize={10} fontWeight="900" textAnchor="middle">{`MAX: ${realVal.toLocaleString()}만`}</text>
-                                </g>
-                            );
-                        };
+                                <>
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                        <div id="chart-sales-by-client" className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 relative">
+                                            <div className="flex items-center justify-between mb-8 border-b border-slate-50 pb-4">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="p-2 bg-blue-50 rounded-lg text-blue-600"><TableIcon size={18} /></div>
+                                                    <h4 className="font-bold text-slate-800 text-base">매출 비중 (Pie Chart)</h4>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <div className="px-3 py-1 bg-slate-50 rounded-full border border-slate-100">
+                                                        <span className="text-[10px] text-slate-500 font-medium">※ 3% 이하 생략</span>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => handleCaptureChart('chart-sales-by-client', '거래처별 매출')}
+                                                        className="capture-button flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-medium transition-colors"
+                                                        title="차트 캡처"
+                                                    >
+                                                        <Camera size={14} />
+                                                        <span>캡처</span>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div className="h-[300px] w-full relative">
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <PieChart>
+                                                        <Pie
+                                                            data={pieData}
+                                                            cx="50%" cy="50%"
+                                                            innerRadius={60} outerRadius={80}
+                                                            paddingAngle={5} dataKey="value"
+                                                            label={renderRevenueLabel}
+                                                        >
+                                                            {pieData.map((entry, index) => (
+                                                                <Cell key={`cell-${index}`} fill={getCatColor(entry.name)} />
+                                                            ))}
+                                                        </Pie>
+                                                        <Legend wrapperStyle={{ bottom: 0, left: 0, width: '100%', fontSize: '12px' }} />
+                                                    </PieChart>
+                                                </ResponsiveContainer>
+                                                <CenterOverlay value={totalCatRevenue} />
+                                            </div>
+                                        </div>
 
-                        const renderRevenueLabel = ({ x, y, cx, name, percent, value }: any) => {
-                            if ((percent || 0) < 0.03) return null; // Hide small segments (< 3%) to avoid overlap
-                            return (
-                                <text x={x} y={y} fill={getCatColor(name)} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize={11}>
-                                    <tspan fontWeight="normal">{`${name} (${((percent || 0) * 100).toFixed(0)}%) `}</tspan>
-                                    <tspan fontWeight="bold">{`${(value || 0).toLocaleString()}원`}</tspan>
-                                </text>
-                            );
-                        };
+                                        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                                            <div className="px-6 py-4 border-b border-slate-50 bg-slate-50/50 flex items-center gap-2">
+                                                <TableIcon size={18} className="text-slate-500" />
+                                                <h4 className="font-bold text-slate-800 text-sm">거래처별 요약</h4>
+                                            </div>
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full text-left border-collapse">
+                                                    <thead className="bg-slate-50">
+                                                        <tr>
+                                                            <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase border-b border-slate-100">거래처</th>
+                                                            <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase border-b border-slate-100">총 매출금액 (원)</th>
+                                                            <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase border-b border-slate-100 text-right">비중 (%)</th>
+                                                            <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase border-b border-slate-100 text-center">상세</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {summaryPieData.map((row, idx) => (
+                                                            <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                                                                <td className="px-6 py-4 text-sm font-bold text-slate-700 border-b border-slate-50">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: getCatColor(row.name) }}></div>
+                                                                        {row.name}
+                                                                        {row.value <= 200000 && <span className="text-[9px] text-slate-400 font-normal ml-1">(소액)</span>}
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-6 py-4 text-sm text-slate-600 border-b border-slate-50">
+                                                                    {row.value.toLocaleString()}원
+                                                                </td>
+                                                                <td className="px-6 py-4 text-sm font-bold border-b border-slate-50 text-right text-slate-800">
+                                                                    {((row.value / (totalCatRevenue || 1)) * 100).toFixed(2)}%
+                                                                </td>
+                                                                <td className="px-6 py-4 text-sm border-b border-slate-50 text-center">
+                                                                    <button
+                                                                        onClick={() => openDetail(row.name, data.filter(d => (d.client || '일반') === row.name && d.revenue > 0))}
+                                                                        className="p-1.5 bg-blue-50 hover:bg-blue-100 rounded-md text-blue-600 hover:text-blue-700 transition-colors inline-flex items-center justify-center"
+                                                                        title="상세 내역 보기"
+                                                                    >
+                                                                        <FileText size={15} />
+                                                                    </button>
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                        <tr className="bg-slate-900 text-white">
+                                                            <td className="px-6 py-4 text-sm font-black">총합</td>
+                                                            <td className="px-6 py-4 text-sm font-black">{totalCatRevenue.toLocaleString()}원</td>
+                                                            <td className="px-6 py-4 text-sm font-black text-right">100.00%</td>
+                                                            <td className="px-6 py-4 border-b border-slate-50"></td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
 
-                        return (
-                            <>
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                    <div id="chart-sales-by-client" className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 relative">
+                                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 overflow-visible">
                                         <div className="flex items-center justify-between mb-8 border-b border-slate-50 pb-4">
                                             <div className="flex items-center gap-2">
-                                                <div className="p-2 bg-blue-50 rounded-lg text-blue-600"><TableIcon size={18} /></div>
-                                                <h4 className="font-bold text-slate-800 text-base">매출 비중 (Pie Chart)</h4>
+                                                <div className="p-2 bg-blue-50 rounded-lg text-blue-600"><LineIcon size={18} /></div>
+                                                <h4 className="font-bold text-slate-800 text-base">{isDaily ? '일별' : '월별'} 거래처별 매출 추이</h4>
                                             </div>
-                                            <div className="flex items-center gap-2">
-                                                <div className="px-3 py-1 bg-slate-50 rounded-full border border-slate-100">
-                                                    <span className="text-[10px] text-slate-500 font-medium">※ 3% 이하 생략</span>
-                                                </div>
-                                                <button
-                                                    onClick={() => handleCaptureChart('chart-sales-by-client', '거래처별 매출')}
-                                                    className="capture-button flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-medium transition-colors"
-                                                    title="차트 캡처"
-                                                >
-                                                    <Camera size={14} />
-                                                    <span>캡처</span>
-                                                </button>
+                                            <div className="px-3 py-1 bg-slate-50 rounded-full border border-slate-100">
+                                                <span className="text-[10px] text-slate-500 font-medium">※ 20만원 이하 생략</span>
                                             </div>
                                         </div>
-                                        <div className="h-[300px] w-full relative">
+                                        <div className="h-[450px] w-full mt-4 relative">
                                             <ResponsiveContainer width="100%" height="100%">
-                                                <PieChart>
-                                                    <Pie
-                                                        data={pieData}
-                                                        cx="50%" cy="50%"
-                                                        innerRadius={60} outerRadius={80}
-                                                        paddingAngle={5} dataKey="value"
-                                                        label={renderRevenueLabel}
-                                                    >
-                                                        {pieData.map((entry, index) => (
-                                                            <Cell key={`cell-${index}`} fill={getCatColor(entry.name)} />
-                                                        ))}
-                                                    </Pie>
-                                                    <Legend wrapperStyle={{ bottom: 0, left: 0, width: '100%', fontSize: '12px' }} />
-                                                </PieChart>
-                                            </ResponsiveContainer>
-                                            <CenterOverlay value={totalCatRevenue} />
-                                        </div>
-                                    </div>
-
-                                    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                                        <div className="px-6 py-4 border-b border-slate-50 bg-slate-50/50 flex items-center gap-2">
-                                            <TableIcon size={18} className="text-slate-500" />
-                                            <h4 className="font-bold text-slate-800 text-sm">거래처별 요약</h4>
-                                        </div>
-                                        <div className="overflow-x-auto">
-                                            <table className="w-full text-left border-collapse">
-                                                <thead className="bg-slate-50">
-                                                    <tr>
-                                                        <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase border-b border-slate-100">거래처</th>
-                                                        <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase border-b border-slate-100">총 매출금액 (원)</th>
-                                                        <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase border-b border-slate-100 text-right">비중 (%)</th>
-                                                        <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase border-b border-slate-100 text-center">상세</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {summaryPieData.map((row, idx) => (
-                                                        <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                                                            <td className="px-6 py-4 text-sm font-bold text-slate-700 border-b border-slate-50">
-                                                                <div className="flex items-center gap-2">
-                                                                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: getCatColor(row.name) }}></div>
-                                                                    {row.name}
-                                                                    {row.value <= 200000 && <span className="text-[9px] text-slate-400 font-normal ml-1">(소액)</span>}
+                                                <LineChart data={trend} margin={{ top: 60, right: 30, left: 10, bottom: 20 }}>
+                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                                    <XAxis dataKey="date" tick={{ fill: '#94a3b8', fontSize: 10 }} tickLine={false} axisLine={false} />
+                                                    <YAxis
+                                                        domain={isDaily ? [0, 200] : [0, 'auto']}
+                                                        ticks={isDaily ? [0, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200] : undefined}
+                                                        tick={{ fill: '#94a3b8', fontSize: 11 }} tickLine={false} axisLine={false}
+                                                        tickFormatter={(val) => (val || 0).toLocaleString() + '만'}
+                                                    />
+                                                    <Tooltip
+                                                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
+                                                        itemSorter={(item: any) => -(item.value || 0)}
+                                                        labelFormatter={(label, payload) => {
+                                                            const total = payload?.reduce((sum, item) => {
+                                                                const d = item.payload;
+                                                                const name = item.name;
+                                                                let val = item.value || 0;
+                                                                if (d && name && d[`display_${name}`] !== undefined) {
+                                                                    val = d[`display_${name}`];
+                                                                }
+                                                                return sum + val;
+                                                            }, 0) || 0;
+                                                            return (
+                                                                <div className="mb-2">
+                                                                    <div className="text-[13px] font-black text-slate-800 border-b border-slate-100 pb-1 mb-1">
+                                                                        총합: {total.toLocaleString()}만
+                                                                    </div>
+                                                                    <div className="text-[10px] text-slate-400">{label}</div>
                                                                 </div>
-                                                            </td>
-                                                            <td className="px-6 py-4 text-sm text-slate-600 border-b border-slate-50">
-                                                                {row.value.toLocaleString()}원
-                                                            </td>
-                                                            <td className="px-6 py-4 text-sm font-bold border-b border-slate-50 text-right text-slate-800">
-                                                                {((row.value / (totalCatRevenue || 1)) * 100).toFixed(2)}%
-                                                            </td>
-                                                            <td className="px-6 py-4 text-sm border-b border-slate-50 text-center">
-                                                                <button
-                                                                    onClick={() => openDetail(row.name, data.filter(d => (d.client || '일반') === row.name && d.revenue > 0))}
-                                                                    className="p-1.5 bg-blue-50 hover:bg-blue-100 rounded-md text-blue-600 hover:text-blue-700 transition-colors inline-flex items-center justify-center"
-                                                                    title="상세 내역 보기"
-                                                                >
-                                                                    <FileText size={15} />
-                                                                </button>
-                                                            </td>
-                                                        </tr>
-                                                    ))}
-                                                    <tr className="bg-slate-900 text-white">
-                                                        <td className="px-6 py-4 text-sm font-black">총합</td>
-                                                        <td className="px-6 py-4 text-sm font-black">{totalCatRevenue.toLocaleString()}원</td>
-                                                        <td className="px-6 py-4 text-sm font-black text-right">100.00%</td>
-                                                        <td className="px-6 py-4 border-b border-slate-50"></td>
-                                                    </tr>
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 overflow-visible">
-                                    <div className="flex items-center justify-between mb-8 border-b border-slate-50 pb-4">
-                                        <div className="flex items-center gap-2">
-                                            <div className="p-2 bg-blue-50 rounded-lg text-blue-600"><LineIcon size={18} /></div>
-                                            <h4 className="font-bold text-slate-800 text-base">{isDaily ? '일별' : '월별'} 거래처별 매출 추이</h4>
-                                        </div>
-                                        <div className="px-3 py-1 bg-slate-50 rounded-full border border-slate-100">
-                                            <span className="text-[10px] text-slate-500 font-medium">※ 20만원 이하 생략</span>
-                                        </div>
-                                    </div>
-                                    <div className="h-[450px] w-full mt-4 relative">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <LineChart data={trend} margin={{ top: 60, right: 30, left: 10, bottom: 20 }}>
-                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                                <XAxis dataKey="date" tick={{ fill: '#94a3b8', fontSize: 10 }} tickLine={false} axisLine={false} />
-                                                <YAxis
-                                                    domain={isDaily ? [0, 200] : [0, 'auto']}
-                                                    ticks={isDaily ? [0, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200] : undefined}
-                                                    tick={{ fill: '#94a3b8', fontSize: 11 }} tickLine={false} axisLine={false}
-                                                    tickFormatter={(val) => (val || 0).toLocaleString() + '만'}
-                                                />
-                                                <Tooltip
-                                                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
-                                                    itemSorter={(item: any) => -(item.value || 0)}
-                                                    labelFormatter={(label, payload) => {
-                                                        const total = payload?.reduce((sum, item) => {
-                                                            const d = item.payload;
-                                                            const name = item.name;
-                                                            let val = item.value || 0;
-                                                            if (d && name && d[`display_${name}`] !== undefined) {
-                                                                val = d[`display_${name}`];
+                                                            );
+                                                        }}
+                                                        formatter={(_val: any, name: any, props: any) => {
+                                                            const d = props?.payload;
+                                                            if (d && name && d?.[`display_${name}`] !== undefined) {
+                                                                const realVal = d[`display_${name}`];
+                                                                return [realVal.toLocaleString() + '만', name];
                                                             }
-                                                            return sum + val;
-                                                        }, 0) || 0;
-                                                        return (
-                                                            <div className="mb-2">
-                                                                <div className="text-[13px] font-black text-slate-800 border-b border-slate-100 pb-1 mb-1">
-                                                                    총합: {total.toLocaleString()}만
-                                                                </div>
-                                                                <div className="text-[10px] text-slate-400">{label}</div>
-                                                            </div>
-                                                        );
-                                                    }}
-                                                    formatter={(_val: any, name: any, props: any) => {
-                                                        const d = props?.payload;
-                                                        if (d && name && d?.[`display_${name}`] !== undefined) {
-                                                            const realVal = d[`display_${name}`];
-                                                            return [realVal.toLocaleString() + '만', name];
-                                                        }
-                                                        return [(_val || 0).toLocaleString() + '만', name];
-                                                    }}
-                                                />
-                                                <Legend verticalAlign="top" height={40} />
-                                                {isDaily && <ReferenceLine y={200} stroke="#f59e0b" strokeDasharray="3 3" />}
-                                                {categories.map((cat) => (
-                                                    <Line
-                                                        key={cat} type="monotone" dataKey={`val_${cat}`} name={cat}
-                                                        stroke={getCatColor(cat)} strokeWidth={3}
-                                                        dot={{ r: 4, fill: getCatColor(cat) }} activeDot={{ r: 6 }}
-                                                    >
-                                                        {isDaily && <LabelList dataKey={`val_${cat}`} content={CategoryLabel} />}
-                                                    </Line>
-                                                ))}
-                                            </LineChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                    <div className="mt-6 p-4 bg-slate-50 rounded-xl border border-slate-100">
-                                        <div className="flex items-start gap-3">
-                                            <div className="p-1.5 bg-blue-100 rounded-lg text-blue-600 mt-0.5"><Users size={14} /></div>
-                                            <div>
-                                                <h5 className="text-xs font-bold text-slate-800 mb-1">상세 분석 가이드</h5>
-                                                <p className="text-[11px] text-slate-500 leading-relaxed">
-                                                    62일 이하 기간 조회 시 각 매출 항목별 성과를 정밀하게 분석할 수 있습니다. 200만 원 초과 시 <strong>MAX 말풍선</strong>으로 실금액이 표시되며,
-                                                    차트 상단의 범례를 클릭하여 필터링 분석이 가능합니다.
-                                                </p>
+                                                            return [(_val || 0).toLocaleString() + '만', name];
+                                                        }}
+                                                    />
+                                                    <Legend verticalAlign="top" height={40} />
+                                                    {isDaily && <ReferenceLine y={200} stroke="#f59e0b" strokeDasharray="3 3" />}
+                                                    {categories.map((cat) => (
+                                                        <Line
+                                                            key={cat} type="monotone" dataKey={`val_${cat}`} name={cat}
+                                                            stroke={getCatColor(cat)} strokeWidth={3}
+                                                            dot={{ r: 4, fill: getCatColor(cat) }} activeDot={{ r: 6 }}
+                                                        >
+                                                            {isDaily && <LabelList dataKey={`val_${cat}`} content={CategoryLabel} />}
+                                                        </Line>
+                                                    ))}
+                                                </LineChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                        <div className="mt-6 p-4 bg-slate-50 rounded-xl border border-slate-100">
+                                            <div className="flex items-start gap-3">
+                                                <div className="p-1.5 bg-blue-100 rounded-lg text-blue-600 mt-0.5"><Users size={14} /></div>
+                                                <div>
+                                                    <h5 className="text-xs font-bold text-slate-800 mb-1">상세 분석 가이드</h5>
+                                                    <p className="text-[11px] text-slate-500 leading-relaxed">
+                                                        62일 이하 기간 조회 시 각 매출 항목별 성과를 정밀하게 분석할 수 있습니다. 200만 원 초과 시 <strong>MAX 말풍선</strong>으로 실금액이 표시되며,
+                                                        차트 상단의 범례를 클릭하여 필터링 분석이 가능합니다.
+                                                    </p>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
-                                </div>
-                            </>
-                        );
-                    })()}
-                </div >
-            )}
+                                </>
+                            );
+                        })()}
+                    </div >
+                )
+            }
 
             {
                 activeFeature === 'expenseCategory' && (
@@ -1597,13 +1648,15 @@ export function Dashboard({ data, startDate, endDate, ingredientData }: Dashboar
             }
 
             {/* 원가/식자재 보고서 */}
-            {activeFeature === 'costReport' && (
-                <div className="animate-in fade-in slide-in-from-top-4 duration-500 pb-8">
-                    <ErrorBoundary>
-                        <CostReportGenerator startDate={startDate} ingredientData={ingredientData} />
-                    </ErrorBoundary>
-                </div>
-            )}
+            {
+                activeFeature === 'costReport' && (
+                    <div className="animate-in fade-in slide-in-from-top-4 duration-500 pb-8">
+                        <ErrorBoundary>
+                            <CostReportGenerator startDate={startDate} ingredientData={ingredientData} />
+                        </ErrorBoundary>
+                    </div>
+                )
+            }
 
             <div className="bg-slate-900/50 p-6 rounded-2xl shadow-xl border border-slate-800">
                 <div className="flex items-start gap-4">
