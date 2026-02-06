@@ -14,14 +14,17 @@ import { ErrorBoundary } from './ErrorBoundary';
 import html2canvas from 'html2canvas';
 
 import { CATEGORY_RULES, findCategory, getCostType } from '../utils/costUtils';
+// import jsPDF from 'jspdf'; // 동적 임포트 사용으로 제거
+// import autoTable from 'jspdf-autotable'; // 동적 임포트 사용으로 제거
 
 interface DashboardProps {
     data: RevenueData[];
     startDate: string;
+    endDate?: string;
     ingredientData?: import('../types').IngredientData[]; // 타입 임포트 혹은 상단의 import 활용
 }
 
-export function Dashboard({ data, startDate, ingredientData }: DashboardProps) {
+export function Dashboard({ data, startDate, endDate, ingredientData }: DashboardProps) {
     useEffect(() => {
         console.log('Reporting Period:', startDate);
     }, [startDate]);
@@ -530,9 +533,156 @@ export function Dashboard({ data, startDate, ingredientData }: DashboardProps) {
 
                 {/* 보고서 생성 버튼 - 네비게이션 바 우측 끝 */}
                 {/* 보고서 생성 버튼 - 네비게이션 바 우측 끝 */}
+                {/* 월매출/지출요약 버튼 - 보고서 생성 버튼 왼쪽 */}
+                {(() => {
+                    const isMonthly = startDate && endDate &&
+                        startDate.substring(0, 7) === endDate.substring(0, 7) &&
+                        startDate.substring(0, 4) === endDate.substring(0, 4);
+
+                    return (
+                        <button
+                            onClick={async () => {
+                                if (!isMonthly) return;
+                                try {
+                                    const { jsPDF } = await import('jspdf');
+                                    await import('jspdf-autotable');
+
+                                    const doc = new jsPDF('p', 'mm', 'a4');
+
+                                    // 한글 폰트 로드 (NanumGothic)
+                                    try {
+                                        const response = await fetch('https://raw.githubusercontent.com/google/fonts/main/ofl/nanumgothic/NanumGothic-Regular.ttf');
+                                        if (response.ok) {
+                                            const blob = await response.blob();
+                                            const reader = new FileReader();
+
+                                            await new Promise((resolve, reject) => {
+                                                reader.onload = (e) => {
+                                                    const result = e.target?.result as string;
+                                                    const base64Font = result.split(',')[1];
+                                                    doc.addFileToVFS('NanumGothic.ttf', base64Font);
+                                                    doc.addFont('NanumGothic.ttf', 'NanumGothic', 'normal');
+                                                    doc.setFont('NanumGothic');
+                                                    resolve(null);
+                                                };
+                                                reader.onerror = reject;
+                                                reader.readAsDataURL(blob);
+                                            });
+                                        }
+                                    } catch (e) {
+                                        console.warn('Font loading failed', e);
+                                    }
+
+                                    const year = startDate.substring(0, 4);
+                                    const month = startDate.substring(5, 7);
+
+                                    // Title
+                                    doc.setFontSize(22);
+                                    doc.text(`${year}년 ${month}월 코스타푸드 매출/지출`, 105, 20, { align: 'center' });
+
+                                    // Revenue Calculation
+                                    const revenueItems = data.filter(d => d.revenue > 0);
+                                    const totalRevenue = revenueItems.reduce((acc, curr) => acc + curr.revenue, 0);
+
+                                    // Group Revenue by Client
+                                    const revenueByClient: Record<string, number> = {};
+                                    revenueItems.forEach(item => {
+                                        const client = item.client || '일반고객';
+                                        revenueByClient[client] = (revenueByClient[client] || 0) + item.revenue;
+                                    });
+
+                                    // Expense Calculation
+                                    const expenseItems = data.filter(d => d.expense > 0);
+                                    const totalExpense = expenseItems.reduce((acc, curr) => acc + curr.expense, 0);
+
+                                    // Group Expense by Category
+                                    const expenseByCategory: Record<string, number> = {};
+                                    expenseItems.forEach(item => {
+                                        const type = item.category || '기타'; // Use 'category' field directly
+                                        expenseByCategory[type] = (expenseByCategory[type] || 0) + item.expense;
+                                    });
+
+                                    let yPos = 40;
+
+                                    // 1. Revenue Section
+                                    doc.setFontSize(18);
+                                    doc.text('<매 출>', 105, yPos, { align: 'center' });
+                                    yPos += 15;
+
+                                    doc.setFontSize(11);
+                                    Object.entries(revenueByClient).sort((a, b) => b[1] - a[1]).forEach(([client, amount]) => {
+                                        doc.text(client, 40, yPos);
+                                        doc.text(`${amount.toLocaleString()}원`, 170, yPos, { align: 'right' });
+                                        yPos += 8;
+                                    });
+
+                                    yPos += 5;
+                                    doc.setFontSize(16);
+                                    doc.text(`합계   ${totalRevenue.toLocaleString()}원`, 105, yPos, { align: 'center' });
+
+                                    // Detailed breakdown for '일반고객'
+                                    if (revenueByClient['일반고객']) {
+                                        yPos += 10;
+                                        doc.setFontSize(9);
+                                        const generalItems = revenueItems.filter(d => (d.client || '일반고객') === '일반고객');
+                                        const generalBreakdown: Record<string, number> = {};
+                                        generalItems.forEach(item => {
+                                            const subCat = item.category || '기타';
+                                            generalBreakdown[subCat] = (generalBreakdown[subCat] || 0) + item.revenue;
+                                        });
+
+                                        doc.text('일반고객 -', 60, yPos);
+                                        let first = true;
+                                        Object.entries(generalBreakdown).forEach(([sub, amt]) => {
+                                            if (!first) yPos += 5;
+                                            doc.text(`${sub}`, 80, yPos);
+                                            doc.text(`${amt.toLocaleString()}원`, 160, yPos, { align: 'right' });
+                                            first = false;
+                                        });
+                                    }
+
+                                    yPos += 30; // Spacing between Revenue and Expense
+
+                                    // 2. Expense Section
+                                    doc.setFontSize(18);
+                                    doc.text('<지 출>', 105, yPos, { align: 'center' });
+                                    yPos += 15;
+
+                                    doc.setFontSize(11);
+                                    const sortedExpense = Object.entries(expenseByCategory).sort((a, b) => b[1] - a[1]);
+                                    sortedExpense.forEach(([cat, amount]) => {
+                                        doc.text(cat, 40, yPos);
+                                        doc.text(`${amount.toLocaleString()}원`, 170, yPos, { align: 'right' });
+                                        yPos += 8;
+                                    });
+
+                                    yPos += 5;
+                                    doc.setFontSize(16);
+                                    doc.text(`합계   ${totalExpense.toLocaleString()}원`, 105, yPos, { align: 'center' });
+
+                                    doc.save(`${year}년_${month}월_코스타푸드_매출지출요약.pdf`);
+
+                                } catch (error) {
+                                    console.error('PDF Generation Error:', error);
+                                    alert('PDF 생성 중 오류가 발생했습니다.');
+                                }
+                            }}
+                            disabled={!isMonthly}
+                            className={`ml-auto flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all duration-300 shadow-md border ${isMonthly
+                                    ? 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-500 cursor-pointer'
+                                    : 'bg-slate-200 text-slate-400 border-slate-200 cursor-not-allowed'
+                                }`}
+                            title={isMonthly ? "월별 요약 리포트 다운로드" : "월 단위로 기간을 선택해야 활성화됩니다"}
+                        >
+                            <FileBarChart size={14} />
+                            <span>월매출/지출요약</span>
+                        </button>
+                    );
+                })()}
+
                 <button
                     onClick={() => setIsReportOpen(true)}
-                    className="ml-auto flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-full text-xs font-bold transition-all duration-300 shadow-md border border-slate-700"
+                    className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-full text-xs font-bold transition-all duration-300 shadow-md border border-slate-700"
                     title="경영 분석 보고서 생성"
                 >
                     <FileText size={14} />

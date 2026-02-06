@@ -226,6 +226,7 @@ function App() {
                       <Dashboard
                         data={filteredRevenueData}
                         startDate={startDate}
+                        endDate={endDate}
                         ingredientData={filteredIngredientData}
                       />
                     ) : (
