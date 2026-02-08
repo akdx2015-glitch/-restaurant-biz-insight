@@ -4,7 +4,7 @@ import {
     BarChart, Bar, Cell, LineChart, Line, Legend, LabelList, ReferenceLine,
     PieChart, Pie
 } from 'recharts';
-import { TrendingUp, DollarSign, BarChart3, ChevronDown, Table as TableIcon, LineChart as LineIcon, Users, PieChart as PieChartIcon, FileText, MessageSquare, Send, X, Bot, Camera, FileBarChart, Copy } from 'lucide-react';
+import { TrendingUp, DollarSign, BarChart3, ChevronDown, Table as TableIcon, LineChart as LineIcon, Users, PieChart as PieChartIcon, FileText, MessageSquare, Send, X, Bot, Camera, FileBarChart, Copy, Download } from 'lucide-react';
 
 import type { RevenueData } from '../types';
 import { DetailModal } from './DetailModal';
@@ -542,6 +542,119 @@ export function Dashboard({ data, startDate, endDate, ingredientData }: Dashboar
                         startDate.substring(0, 7) === endDate.substring(0, 7) &&
                         startDate.substring(0, 4) === endDate.substring(0, 4);
 
+                    // 1. 데이터 집계
+                    const year = startDate.substring(0, 4);
+                    const month = startDate.substring(5, 7);
+
+                    // Revenue Calculation
+                    const revenueItems = data.filter(d => d.revenue > 0);
+                    const totalRevenue = revenueItems.reduce((acc, curr) => acc + curr.revenue, 0);
+                    const revenueByClient: Record<string, number> = {};
+                    revenueItems.forEach(item => {
+                        const client = item.client || '일반고객';
+                        revenueByClient[client] = (revenueByClient[client] || 0) + item.revenue;
+                    });
+                    const sortedRevenue = Object.entries(revenueByClient).sort((a, b) => b[1] - a[1]);
+
+                    // Expense Calculation
+                    const expenseItems = data.filter(d => d.expense > 0);
+                    const totalExpense = expenseItems.reduce((acc, curr) => acc + curr.expense, 0);
+                    const expenseByCategory: Record<string, number> = {};
+                    expenseItems.forEach(item => {
+                        const type = item.category || '기타';
+                        expenseByCategory[type] = (expenseByCategory[type] || 0) + item.expense;
+                        // expenseByCategory[type] = (expenseByCategory[type] || 0) + item.expense;
+                    });
+                    const sortedExpense = Object.entries(expenseByCategory).sort((a, b) => b[1] - a[1]);
+
+                    // 2. 핸들러 함수들
+                    const handleWordDownload = async () => {
+                        try {
+                            const doc = new Document({
+                                sections: [{
+                                    properties: {},
+                                    children: [
+                                        new Paragraph({
+                                            children: [new TextRun({ text: `${year}년 ${month}월 코스타푸드 매출/지출`, bold: true, size: 44 })], // 22pt * 2
+                                            alignment: AlignmentType.CENTER,
+                                            spacing: { after: 400 },
+                                        }),
+
+                                        // Revenue Section
+                                        new Paragraph({
+                                            children: [new TextRun({ text: "<매 출>", bold: true, size: 36 })],
+                                            alignment: AlignmentType.CENTER,
+                                            spacing: { before: 200, after: 300 },
+                                        }),
+                                        ...sortedRevenue.map(([client, amount]) => {
+                                            return new Paragraph({
+                                                children: [
+                                                    new TextRun({ text: client, size: 22 }),
+                                                    new TextRun({ text: `\t${amount.toLocaleString()}원`, size: 22, bold: true }),
+                                                ],
+                                                tabStops: [{ type: "right", position: 9000 }], // Adjust tab position
+                                            });
+                                        }),
+                                        new Paragraph({
+                                            children: [new TextRun({ text: `합계   ${totalRevenue.toLocaleString()}원`, bold: true, size: 32 })],
+                                            alignment: AlignmentType.CENTER,
+                                            spacing: { before: 200, after: 600 },
+                                        }),
+
+                                        // Expense Section
+                                        new Paragraph({
+                                            children: [new TextRun({ text: "<지 출>", bold: true, size: 36 })],
+                                            alignment: AlignmentType.CENTER,
+                                            spacing: { before: 200, after: 300 },
+                                        }),
+                                        ...sortedExpense.map(([cat, amount]) => {
+                                            return new Paragraph({
+                                                children: [
+                                                    new TextRun({ text: cat, size: 22 }),
+                                                    new TextRun({ text: `\t${amount.toLocaleString()}원`, size: 22, bold: true }),
+                                                ],
+                                                tabStops: [{ type: "right", position: 9000 }],
+                                            });
+                                        }),
+                                        new Paragraph({
+                                            children: [new TextRun({ text: `합계   ${totalExpense.toLocaleString()}원`, bold: true, size: 32 })],
+                                            alignment: AlignmentType.CENTER,
+                                            spacing: { before: 200 },
+                                        }),
+                                    ],
+                                }],
+                            });
+
+                            const blob = await Packer.toBlob(doc);
+                            saveAs(blob, `${year}년_${month}월_코스타푸드_매출지출요약.docx`);
+                            // setIsSummaryPopupOpen(false); // 미리보기 창 유지
+                            alert('Word 파일이 다운로드되었습니다.');
+                        } catch (error) {
+                            console.error('Word Export Error:', error);
+                            alert('Word 파일 생성 중 오류가 발생했습니다.');
+                        }
+                    };
+
+                    const handleCopy = () => {
+                        const text = `
+[${year}년 ${month}월 코스타푸드 매출/지출]
+
+<매 출>
+${sortedRevenue.map(([c, a]) => `${c}\t${a.toLocaleString()}원`).join('\n')}
+
+합계\t${totalRevenue.toLocaleString()}원
+
+<지 출>
+${sortedExpense.map(([c, a]) => `${c}\t${a.toLocaleString()}원`).join('\n')}
+
+합계\t${totalExpense.toLocaleString()}원
+                        `.trim();
+
+                        navigator.clipboard.writeText(text).then(() => {
+                            alert('클립보드에 복사되었습니다. 붙여넣기(Ctrl+V) 하세요.');
+                        }).catch(() => alert('복사에 실패했습니다.'));
+                    };
+
                     return (
                         <>
                             <button
@@ -550,8 +663,8 @@ export function Dashboard({ data, startDate, endDate, ingredientData }: Dashboar
                                 }}
                                 disabled={!isMonthly}
                                 className={`ml-auto flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all duration-300 shadow-md border ${isMonthly
-                                        ? 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-500 cursor-pointer'
-                                        : 'bg-slate-200 text-slate-400 border-slate-200 cursor-not-allowed'
+                                    ? 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-500 cursor-pointer'
+                                    : 'bg-slate-200 text-slate-400 border-slate-200 cursor-not-allowed'
                                     }`}
                                 title={isMonthly ? "월별 요약 리포트 내보내기" : "월 단위로 기간을 선택해야 활성화됩니다"}
                             >
@@ -559,165 +672,101 @@ export function Dashboard({ data, startDate, endDate, ingredientData }: Dashboar
                                 <span>월매출/지출요약</span>
                             </button>
 
-                            {/* Summary Selection Popup */}
+                            {/* New Preview Modal */}
                             {isSummaryPopupOpen && (
                                 <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">
-                                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden transform scale-100 transition-all">
-                                        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-                                            <h3 className="font-bold text-slate-800 text-lg">요약 리포트 내보내기</h3>
-                                            <button onClick={() => setIsSummaryPopupOpen(false)} className="text-slate-400 hover:text-slate-600">
+                                    <div className="bg-slate-900 rounded-xl shadow-2xl w-full max-w-6xl h-[90vh] flex flex-col border border-slate-700 overflow-hidden">
+
+                                        {/* Modal Header */}
+                                        <div className="flex items-center justify-between px-6 py-3 border-b border-slate-700 bg-slate-800 shrink-0">
+                                            <div className="flex items-center gap-2">
+                                                <FileBarChart size={18} className="text-indigo-400" />
+                                                <h3 className="font-bold text-white text-base">월 매출/지출 요약 미리보기</h3>
+                                            </div>
+                                            <button
+                                                onClick={() => setIsSummaryPopupOpen(false)}
+                                                className="p-1.5 hover:bg-slate-700 rounded text-slate-400 hover:text-white transition-colors"
+                                            >
                                                 <X size={20} />
                                             </button>
                                         </div>
-                                        <div className="p-6 space-y-3">
-                                            <button
-                                                onClick={async () => {
-                                                    try {
-                                                        const year = startDate.substring(0, 4);
-                                                        const month = startDate.substring(5, 7);
 
-                                                        // Revenue Calculation
-                                                        const revenueItems = data.filter(d => d.revenue > 0);
-                                                        const totalRevenue = revenueItems.reduce((acc, curr) => acc + curr.revenue, 0);
-                                                        const revenueByClient: Record<string, number> = {};
-                                                        revenueItems.forEach(item => {
-                                                            const client = item.client || '일반고객';
-                                                            revenueByClient[client] = (revenueByClient[client] || 0) + item.revenue;
-                                                        });
+                                        {/* Preview Area */}
+                                        <div className="flex-1 overflow-auto bg-slate-800/50 p-8 customize-scrollbar block">
+                                            {/* A4 Paper */}
+                                            <div className="mx-auto bg-white text-slate-900 w-[210mm] min-h-[297mm] p-[20mm] shadow-xl relative animate-in fade-in duration-300 mb-8">
 
-                                                        // Expense Calculation
-                                                        const expenseItems = data.filter(d => d.expense > 0);
-                                                        const totalExpense = expenseItems.reduce((acc, curr) => acc + curr.expense, 0);
-                                                        const expenseByCategory: Record<string, number> = {};
-                                                        expenseItems.forEach(item => {
-                                                            const type = item.category || '기타';
-                                                            expenseByCategory[type] = (expenseByCategory[type] || 0) + item.expense;
-                                                        });
-
-                                                        const doc = new Document({
-                                                            sections: [{
-                                                                properties: {},
-                                                                children: [
-                                                                    new Paragraph({
-                                                                        children: [new TextRun({ text: `${year}년 ${month}월 코스타푸드 매출/지출`, bold: true, size: 44 })], // 22pt * 2
-                                                                        alignment: AlignmentType.CENTER,
-                                                                        spacing: { after: 400 },
-                                                                    }),
-
-                                                                    // Revenue Section
-                                                                    new Paragraph({
-                                                                        children: [new TextRun({ text: "<매 출>", bold: true, size: 36 })],
-                                                                        alignment: AlignmentType.CENTER,
-                                                                        spacing: { before: 200, after: 300 },
-                                                                    }),
-                                                                    ...Object.entries(revenueByClient).sort((a, b) => b[1] - a[1]).map(([client, amount]) => {
-                                                                        return new Paragraph({
-                                                                            children: [
-                                                                                new TextRun({ text: client, size: 22 }),
-                                                                                new TextRun({ text: `\t${amount.toLocaleString()}원`, size: 22, bold: true }),
-                                                                            ],
-                                                                            tabStops: [{ type: "right", position: 9000 }], // Adjust tab position
-                                                                        });
-                                                                    }),
-                                                                    new Paragraph({
-                                                                        children: [new TextRun({ text: `합계   ${totalRevenue.toLocaleString()}원`, bold: true, size: 32 })],
-                                                                        alignment: AlignmentType.CENTER,
-                                                                        spacing: { before: 200, after: 600 },
-                                                                    }),
-
-                                                                    // Expense Section
-                                                                    new Paragraph({
-                                                                        children: [new TextRun({ text: "<지 출>", bold: true, size: 36 })],
-                                                                        alignment: AlignmentType.CENTER,
-                                                                        spacing: { before: 200, after: 300 },
-                                                                    }),
-                                                                    ...Object.entries(expenseByCategory).sort((a, b) => b[1] - a[1]).map(([cat, amount]) => {
-                                                                        return new Paragraph({
-                                                                            children: [
-                                                                                new TextRun({ text: cat, size: 22 }),
-                                                                                new TextRun({ text: `\t${amount.toLocaleString()}원`, size: 22, bold: true }),
-                                                                            ],
-                                                                            tabStops: [{ type: "right", position: 9000 }],
-                                                                        });
-                                                                    }),
-                                                                    new Paragraph({
-                                                                        children: [new TextRun({ text: `합계   ${totalExpense.toLocaleString()}원`, bold: true, size: 32 })],
-                                                                        alignment: AlignmentType.CENTER,
-                                                                        spacing: { before: 200 },
-                                                                    }),
-                                                                ],
-                                                            }],
-                                                        });
-
-                                                        const blob = await Packer.toBlob(doc);
-                                                        saveAs(blob, `${year}년_${month}월_코스타푸드_매출지출요약.docx`);
-                                                        setIsSummaryPopupOpen(false);
-                                                    } catch (error) {
-                                                        console.error('Word Export Error:', error);
-                                                        alert('Word 파일 생성 중 오류가 발생했습니다.');
-                                                    }
-                                                }}
-                                                className="w-full flex items-center justify-center gap-3 p-4 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl border border-blue-200 transition-all group"
-                                            >
-                                                <div className="p-2 bg-blue-200 rounded-lg group-hover:scale-110 transition-transform">
-                                                    <FileText size={24} />
+                                                {/* Action Buttons (Top Right inside paper) */}
+                                                <div className="absolute top-8 right-8 flex gap-2 print:hidden">
+                                                    <button
+                                                        onClick={handleWordDownload}
+                                                        className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold shadow-sm transition-all shadow-blue-200"
+                                                    >
+                                                        <Download size={14} />
+                                                        Word 다운로드
+                                                    </button>
+                                                    <button
+                                                        onClick={handleCopy}
+                                                        className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded text-xs font-bold shadow-sm transition-all"
+                                                    >
+                                                        <Copy size={14} />
+                                                        문서용 복사
+                                                    </button>
                                                 </div>
-                                                <div className="text-left">
-                                                    <div className="font-bold text-base">Word 다운로드</div>
-                                                    <div className="text-xs text-blue-500 opacity-80">.docx 파일로 저장합니다</div>
+
+                                                {/* Document Content */}
+                                                <div className="flex flex-col gap-6 mt-8 font-serif">
+                                                    {/* Title */}
+                                                    <div className="text-center mb-10">
+                                                        <h1 className="text-3xl font-bold border-b-2 border-slate-900 pb-2 inline-block">
+                                                            {year}년 {month}월 코스타푸드 매출/지출
+                                                        </h1>
+                                                    </div>
+
+                                                    {/* Revenue Section */}
+                                                    <div>
+                                                        <h2 className="text-xl font-bold mb-4 border-b border-slate-800 pb-1 text-center">&lt;매 출&gt;</h2>
+                                                        <table className="w-full text-base border-collapse">
+                                                            <tbody>
+                                                                {sortedRevenue.map(([client, amount], idx) => (
+                                                                    <tr key={idx} className="border-b border-slate-100">
+                                                                        <td className="py-2 pl-4">{client}</td>
+                                                                        <td className="py-2 pr-4 text-right font-medium">{amount.toLocaleString()}원</td>
+                                                                    </tr>
+                                                                ))}
+                                                                <tr className="font-bold bg-slate-50 border-t-2 border-slate-800">
+                                                                    <td className="py-3 pl-4 text-lg">합계</td>
+                                                                    <td className="py-3 pr-4 text-right text-lg text-blue-700">{totalRevenue.toLocaleString()}원</td>
+                                                                </tr>
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+
+                                                    {/* Expense Section */}
+                                                    <div className="mt-8">
+                                                        <h2 className="text-xl font-bold mb-4 border-b border-slate-800 pb-1 text-center">&lt;지 출&gt;</h2>
+                                                        <table className="w-full text-base border-collapse">
+                                                            <tbody>
+                                                                {sortedExpense.map(([cat, amount], idx) => (
+                                                                    <tr key={idx} className="border-b border-slate-100">
+                                                                        <td className="py-2 pl-4">{cat}</td>
+                                                                        <td className="py-2 pr-4 text-right font-medium">{amount.toLocaleString()}원</td>
+                                                                    </tr>
+                                                                ))}
+                                                                <tr className="font-bold bg-slate-50 border-t-2 border-slate-800">
+                                                                    <td className="py-3 pl-4 text-lg">합계</td>
+                                                                    <td className="py-3 pr-4 text-right text-lg text-red-700">{totalExpense.toLocaleString()}원</td>
+                                                                </tr>
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
                                                 </div>
-                                            </button>
 
-                                            <button
-                                                onClick={() => {
-                                                    const year = startDate.substring(0, 4);
-                                                    const month = startDate.substring(5, 7);
-
-                                                    const revenueItems = data.filter(d => d.revenue > 0);
-                                                    const totalRevenue = revenueItems.reduce((acc, curr) => acc + curr.revenue, 0);
-                                                    const revenueByClient: Record<string, number> = {};
-                                                    revenueItems.forEach(item => {
-                                                        const client = item.client || '일반고객';
-                                                        revenueByClient[client] = (revenueByClient[client] || 0) + item.revenue;
-                                                    });
-
-                                                    const expenseItems = data.filter(d => d.expense > 0);
-                                                    const totalExpense = expenseItems.reduce((acc, curr) => acc + curr.expense, 0);
-                                                    const expenseByCategory: Record<string, number> = {};
-                                                    expenseItems.forEach(item => {
-                                                        const type = item.category || '기타';
-                                                        expenseByCategory[type] = (expenseByCategory[type] || 0) + item.expense;
-                                                    });
-
-                                                    const text = `
-[${year}년 ${month}월 코스타푸드 매출/지출]
-
-<매 출>
-${Object.entries(revenueByClient).sort((a, b) => b[1] - a[1]).map(([c, a]) => `${c}\t${a.toLocaleString()}원`).join('\n')}
-
-합계\t${totalRevenue.toLocaleString()}원
-
-<지 출>
-${Object.entries(expenseByCategory).sort((a, b) => b[1] - a[1]).map(([c, a]) => `${c}\t${a.toLocaleString()}원`).join('\n')}
-
-합계\t${totalExpense.toLocaleString()}원
-                                                     `.trim();
-
-                                                    navigator.clipboard.writeText(text).then(() => {
-                                                        alert('클립보드에 복사되었습니다. 붙여넣기(Ctrl+V) 하세요.');
-                                                        setIsSummaryPopupOpen(false);
-                                                    }).catch(() => alert('복사에 실패했습니다.'));
-                                                }}
-                                                className="w-full flex items-center justify-center gap-3 p-4 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl border border-slate-200 transition-all group"
-                                            >
-                                                <div className="p-2 bg-slate-200 rounded-lg group-hover:scale-110 transition-transform">
-                                                    <Copy size={24} />
+                                                {/* Page Number */}
+                                                <div className="absolute bottom-8 left-0 right-0 text-center text-xs text-slate-400">
+                                                    1 / 1
                                                 </div>
-                                                <div className="text-left">
-                                                    <div className="font-bold text-base">문서용 복사</div>
-                                                    <div className="text-xs text-slate-500 opacity-80">텍스트로 클립보드에 복사합니다</div>
-                                                </div>
-                                            </button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
