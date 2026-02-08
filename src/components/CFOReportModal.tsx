@@ -1,8 +1,10 @@
 import { useState, useMemo, useEffect } from 'react';
-import { X, Copy, FileText, Check, GripVertical, FileDown } from 'lucide-react';
+import { X, Copy, FileText, Check, GripVertical, FileDown, Download } from 'lucide-react';
 import type { RevenueData, IngredientData } from '../types';
 import { getCostType } from '../utils/costUtils';
 import { exportToJsxWord } from '../utils/docxGenerator';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 
 interface CFOReportModalProps {
     isOpen: boolean;
@@ -181,6 +183,86 @@ export function CFOReportModal({ isOpen, onClose, revenueData, ingredientData, s
         }
     };
 
+    const handlePdfPreview = async () => {
+        // 팝업 차단 방지를 위해 미리 창을 엽니다.
+        const newWindow = window.open('', '_blank');
+        if (!newWindow) {
+            alert('팝업 차단이 설정되어 있습니다. 팝업 차단을 해제하고 다시 시도해주세요.');
+            return;
+        }
+
+        // 로딩 메시지 표시
+        newWindow.document.write(`
+            <html>
+                <head>
+                    <title>PDF 생성 중...</title>
+                    <style>
+                        body { display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; font-family: sans-serif; background-color: #f8fafc; color: #334155; }
+                        .loader { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 15px; }
+                        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+                        .content { text-align: center; }
+                    </style>
+                </head>
+                <body>
+                    <div class="content">
+                        <div class="loader" style="margin: 0 auto 15px auto;"></div>
+                        <h2>PDF 문서를 생성하고 있습니다...</h2>
+                        <p>잠시만 기다려주세요.</p>
+                    </div>
+                </body>
+            </html>
+        `);
+
+        try {
+            // A4 페이지 요소들 선택
+            const pages = document.querySelectorAll('.bg-white.w-full.max-w-\\[210mm\\]');
+            if (!pages || pages.length === 0) {
+                newWindow.close();
+                alert('보고서 페이지를 찾을 수 없습니다.');
+                return;
+            }
+
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+
+            for (let i = 0; i < pages.length; i++) {
+                const page = pages[i] as HTMLElement;
+
+                // 캡처 전 스타일 조정 (그림자 제거 등)
+                const originalShadow = page.style.boxShadow;
+                page.style.boxShadow = 'none';
+
+                const canvas = await html2canvas(page, {
+                    scale: 2,
+                    backgroundColor: '#ffffff',
+                    logging: false,
+                    useCORS: true
+                });
+
+                // 스타일 복구
+                page.style.boxShadow = originalShadow;
+
+                const imgData = canvas.toDataURL('image/png');
+                const imgProps = pdf.getImageProperties(imgData);
+                const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+                if (i > 0) pdf.addPage();
+                pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, imgHeight);
+
+                // 약간의 지연을 주어 UI 블로킹 방지
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+
+            const pdfBlobUrl = pdf.output('bloburl');
+            newWindow.location.href = pdfBlobUrl.toString();
+
+        } catch (err) {
+            console.error('PDF 생성 실패:', err);
+            newWindow.close();
+            alert('PDF 미리보기 생성 중 오류가 발생했습니다.');
+        }
+    };
+
     if (!isOpen || !reportInfo) return null;
     const {
         dateRangeText, overallStatus, flRatio, flStatus, primeCost, bep, bepReached, revPerHead,
@@ -239,6 +321,14 @@ export function CFOReportModal({ isOpen, onClose, revenueData, ingredientData, s
                         >
                             <FileDown size={18} />
                             Word 저장
+                        </button>
+
+                        <button
+                            onClick={handlePdfPreview}
+                            className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 rounded font-medium text-sm transition-all text-white shadow-sm"
+                        >
+                            <Download size={18} />
+                            PDF 미리보기
                         </button>
 
                         <button onClick={onClose} className="p-2 hover:bg-[#F1F3F4] rounded-full text-[#5F6368] transition-colors">
