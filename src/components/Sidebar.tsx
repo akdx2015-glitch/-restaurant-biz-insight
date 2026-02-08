@@ -1,7 +1,6 @@
-import { Database, RefreshCw } from 'lucide-react';
+import { Database, RefreshCw, X } from 'lucide-react';
 
 interface SidebarProps {
-
     onGoogleSheetSync: (url: string, type: 'revenue' | 'ingredient') => void;
     onUseSampleData: () => void;
     activeTab: 'management' | 'cost';
@@ -13,7 +12,6 @@ interface SidebarProps {
 }
 
 export function Sidebar({
-
     onGoogleSheetSync,
     onUseSampleData,
     activeTab,
@@ -23,7 +21,6 @@ export function Sidebar({
     setRevenueSheetUrl,
     setIngredientSheetUrl
 }: SidebarProps) {
-
 
     return (
         <div className="w-64 bg-slate-900 text-white flex flex-col h-screen fixed left-0 top-0 shadow-xl z-50 overflow-y-auto">
@@ -66,8 +63,19 @@ export function Sidebar({
 
                     {/* Revenue Section */}
                     <div className="space-y-2">
-                        <div className="flex items-center gap-2 text-slate-400 mb-1">
-                            <span className="text-[10px] font-bold">매출/지출 데이터</span>
+                        <div className="flex items-center justify-between text-slate-400 mb-1">
+                            <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-bold">매출/지출 데이터</span>
+                            </div>
+                            {revenueSheetUrl && (
+                                <button
+                                    onClick={() => setRevenueSheetUrl('')}
+                                    className="text-slate-500 hover:text-white transition-colors"
+                                    title="주소 지우기"
+                                >
+                                    <X size={12} />
+                                </button>
+                            )}
                         </div>
                         <div className="bg-slate-800/50 p-3 rounded-xl border border-slate-700 space-y-2">
                             <input
@@ -89,8 +97,19 @@ export function Sidebar({
 
                     {/* Ingredient Section */}
                     <div className="space-y-2">
-                        <div className="flex items-center gap-2 text-slate-400 mb-1">
-                            <span className="text-[10px] font-bold">식자재/물품 데이터</span>
+                        <div className="flex items-center justify-between text-slate-400 mb-1">
+                            <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-bold">식자재/물품 데이터</span>
+                            </div>
+                            {ingredientSheetUrl && (
+                                <button
+                                    onClick={() => setIngredientSheetUrl('')}
+                                    className="text-slate-500 hover:text-white transition-colors"
+                                    title="주소 지우기"
+                                >
+                                    <X size={12} />
+                                </button>
+                            )}
                         </div>
                         <div className="bg-slate-800/50 p-3 rounded-xl border border-slate-700 space-y-2">
                             <input
