@@ -180,7 +180,8 @@ export function DetailModal({ isOpen, onClose, title, data, totalAmount, dateRan
                 {/* 표 영역 (조건부 렌더링) */}
                 {showPreview ? (
                     <div className="flex-1 overflow-auto bg-slate-800/50 p-8 flex justify-center customize-scrollbar">
-                        <div className="bg-white text-slate-900 w-[210mm] min-h-[297mm] p-[15mm] shadow-xl relative animate-in fade-in duration-300">
+                        {/* A4 가로 모드: 297mm x 210mm */}
+                        <div className="bg-white text-slate-900 w-[297mm] min-h-[210mm] p-[15mm] shadow-xl relative animate-in fade-in duration-300">
                             {/* 미리보기 상단 액션 버튼 */}
                             <div className="absolute top-4 right-4 flex gap-2 print:hidden">
                                 <button
@@ -200,24 +201,19 @@ export function DetailModal({ isOpen, onClose, title, data, totalAmount, dateRan
                             </div>
 
                             {/* PDF 미리보기 내용 */}
-                            <div className="flex flex-col gap-4">
-                                <div className="border-b-2 border-slate-800 pb-4 mb-2">
-                                    <h1 className="text-2xl font-bold text-slate-900">{title}</h1>
-                                    <div className="flex justify-between items-end mt-4 text-sm text-slate-600">
-                                        <div>
-                                            <p><span className="font-semibold">기간:</span> {dateRange || '-'}</p>
-                                            <p className="mt-1"><span className="font-semibold">출력일:</span> {new Date().toLocaleDateString()}</p>
-                                        </div>
-                                        <div className="text-right">
-                                            <p>총 {data.length.toLocaleString()}건</p>
-                                            <p className="font-bold text-lg text-slate-900">합계: {totalAmount.toLocaleString()}원</p>
-                                        </div>
+                            <div className="flex flex-col gap-6">
+                                <div>
+                                    <h1 className="text-3xl font-bold text-slate-900 mb-2">{title}</h1>
+                                    <div className="text-sm text-slate-600">
+                                        <p>기간: {dateRange || '-'}</p>
+                                        <p className="mt-1">총 {data.length.toLocaleString()}건 / 합계: {totalAmount.toLocaleString()}원</p>
                                     </div>
                                 </div>
 
                                 <table className="w-full text-left border-collapse text-xs">
                                     <thead>
-                                        <tr className="bg-slate-100 border-b border-slate-300 text-slate-700">
+                                        {/* PDF 헤더 색상: [23, 37, 84] -> #172554 */}
+                                        <tr className="bg-[#172554] text-white">
                                             <th className="px-2 py-2 font-bold w-[12%]">날짜</th>
                                             <th className="px-2 py-2 font-bold w-[18%]">거래처</th>
                                             <th className="px-2 py-2 font-bold w-[12%]">구분</th>
@@ -226,27 +222,27 @@ export function DetailModal({ isOpen, onClose, title, data, totalAmount, dateRan
                                             <th className="px-2 py-2 font-bold">세부내용</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="text-slate-600">
+                                    <tbody className="text-slate-800">
                                         {sortedData.map((row, idx) => {
                                             const amount = row.revenue > 0 ? row.revenue : row.expense;
                                             const type = row.category || (row.revenue > 0 ? '매출' : '지출');
                                             return (
-                                                <tr key={idx} className="border-b border-slate-200 hover:bg-slate-50">
-                                                    <td className="px-2 py-1.5">{row.date}</td>
-                                                    <td className="px-2 py-1.5 truncate">{row.client || '-'}</td>
-                                                    <td className="px-2 py-1.5">{type}</td>
-                                                    <td className="px-2 py-1.5 text-right font-medium">{amount.toLocaleString()}</td>
-                                                    <td className="px-2 py-1.5 text-center">{row.paymentMethod || '-'}</td>
-                                                    <td className="px-2 py-1.5 truncate text-slate-500">{row.memo || '-'}</td>
+                                                <tr key={idx} className="border-b border-slate-200">
+                                                    <td className="px-2 py-2">{row.date}</td>
+                                                    <td className="px-2 py-2 truncate">{row.client || '-'}</td>
+                                                    <td className="px-2 py-2">{type}</td>
+                                                    <td className="px-2 py-2 text-right font-medium">{amount.toLocaleString()}</td>
+                                                    <td className="px-2 py-2 text-center">{row.paymentMethod || '-'}</td>
+                                                    <td className="px-2 py-2 truncate text-slate-500">{row.memo || '-'}</td>
                                                 </tr>
                                             );
                                         })}
                                     </tbody>
                                 </table>
 
-                                <div className="mt-8 text-center text-xs text-slate-400 border-t border-slate-200 pt-4">
-                                    <p>위 내용은 사실과 다름없음을 확인합니다.</p>
-                                    <p className="mt-1">Generated by AntiGravity</p>
+                                {/* 페이지네이션 표시 (PDF 느낌) */}
+                                <div className="absolute bottom-4 left-0 right-0 text-center text-[10px] text-slate-400">
+                                    1 / 1
                                 </div>
                             </div>
                         </div>
