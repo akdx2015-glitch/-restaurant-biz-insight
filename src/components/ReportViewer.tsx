@@ -288,6 +288,232 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
         `;
     };
 
+    // === 고급 비용 분석 및 테이블 생성 로직 ===
+
+    // 월별 데이터 집계
+    const monthlyData = data.reduce((acc, d) => {
+        const month = d.date.substring(0, 7); // YYYY-MM
+        if (!acc[month]) {
+            acc[month] = {
+                month,
+                revenue: 0,
+                expense: 0,
+                laborCost: 0,
+                foodCost: 0,
+                otherCost: 0,
+                fixedCost: 0,
+                variableCost: 0
+            };
+        }
+
+        if (d.revenue > 0) {
+            acc[month].revenue += d.revenue;
+        }
+
+        if (d.expense > 0) {
+            acc[month].expense += d.expense;
+
+            const { type, category } = getCostType(d);
+
+            // 고정비/변동비 구분
+            if (type === 'FIXED') acc[month].fixedCost += d.expense;
+            else acc[month].variableCost += d.expense;
+
+            // 식자재/인건비 구분
+            if (category.includes('식자재') || category.includes('Food') || category.includes('Meat')) {
+                acc[month].foodCost += d.expense;
+            } else if (category.includes('인건비') || category.includes('Salary') || category.includes('Wages') || category.includes('급여')) {
+                acc[month].laborCost += d.expense;
+            } else {
+                acc[month].otherCost += d.expense;
+            }
+        }
+        return acc;
+    }, {} as Record<string, {
+        month: string;
+        revenue: number;
+        expense: number;
+        laborCost: number;
+        foodCost: number;
+        otherCost: number;
+        fixedCost: number;
+        variableCost: number;
+    }>);
+
+    const sortedMonthlyData = Object.values(monthlyData).sort((a, b) => a.month.localeCompare(b.month));
+
+    // 스타일 정의
+    const tableHeaderStyle = "background-color: #2f5d62; color: white; padding: 8px; text-align: center; border: 1px solid #1e3a3e;";
+    const tableCellStyle = "padding: 8px; border: 1px solid #e2e8f0; text-align: right;";
+    const tableCellStyleCenter = "padding: 8px; border: 1px solid #e2e8f0; text-align: center;";
+
+    // 1. 상세 매출/지출 내역 섹션 생성
+    const generateDetailedBreakdown = () => {
+        // 매출 내역 그룹화 (거래처별)
+        const revenueItems = Object.values(
+            data.filter(d => d.revenue > 0).reduce((acc, d) => {
+                const key = d.client || '기타';
+                if (!acc[key]) acc[key] = { name: key, value: 0 };
+                acc[key].value += d.revenue;
+                return acc;
+            }, {} as Record<string, { name: string; value: number }>)
+        ).sort((a, b) => b.value - a.value);
+
+        // 지출 내역 그룹화 (카테고리 + 상세)
+        const expenseItems = Object.values(
+            data.filter(d => d.expense > 0).reduce((acc, d) => {
+                const { category } = getCostType(d);
+                const key = `${category}`;
+                if (!acc[key]) acc[key] = { name: key, value: 0 };
+                acc[key].value += d.expense;
+                return acc;
+            }, {} as Record<string, { name: string; value: number }>)
+        ).sort((a, b) => b.value - a.value);
+
+        return `
+            <div style="display: flex; gap: 30px; margin-bottom: 30px;">
+                <div style="flex: 1;">
+                    <h3 style="border-bottom: 2px solid #2f5d62; padding-bottom: 5px; color: #2f5d62;">&lt;매 출&gt;</h3>
+                    <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+                        ${revenueItems.map(item => `
+                            <tr>
+                                <td style="padding: 5px; border-bottom: 1px solid #eee;">${item.name}</td>
+                                <td style="padding: 5px; border-bottom: 1px solid #eee; text-align: right;">${item.value.toLocaleString()}원</td>
+                            </tr>
+                        `).join('')}
+                        <tr style="font-weight: bold; background-color: #fce7f3;">
+                            <td style="padding: 10px 5px; border-top: 2px solid #2f5d62;">합계</td>
+                            <td style="padding: 10px 5px; border-top: 2px solid #2f5d62; text-align: right;">${totalRevenue.toLocaleString()}원</td>
+                        </tr>
+                    </table>
+                </div>
+                <div style="flex: 1;">
+                    <h3 style="border-bottom: 2px solid #cf3e3e; padding-bottom: 5px; color: #cf3e3e;">&lt;지 출&gt;</h3>
+                    <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+                        ${expenseItems.map(item => `
+                            <tr>
+                                <td style="padding: 5px; border-bottom: 1px solid #eee;">${item.name}</td>
+                                <td style="padding: 5px; border-bottom: 1px solid #eee; text-align: right;">${item.value.toLocaleString()}원</td>
+                            </tr>
+                        `).join('')}
+                        <tr style="font-weight: bold; background-color: #e0f2fe;">
+                            <td style="padding: 10px 5px; border-top: 2px solid #cf3e3e;">합계</td>
+                            <td style="padding: 10px 5px; border-top: 2px solid #cf3e3e; text-align: right;">${totalExpense.toLocaleString()}원</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        `;
+    };
+
+    // 3. 매출 대비 비용 효율 테이블
+    const generateCostEfficiencyTable = () => {
+        return `
+            <h2 style="margin-top: 30px;">3. 매출 대비 비용 효율</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="${tableHeaderStyle}">월 (Month)</th>
+                        <th style="${tableHeaderStyle}">인건비율 (Labor %)</th>
+                        <th style="${tableHeaderStyle}">식자재율 (Food %)</th>
+                        <th style="${tableHeaderStyle}">FL 합계 (%)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${sortedMonthlyData.map(m => {
+            const laborRatio = m.revenue > 0 ? (m.laborCost / m.revenue * 100) : 0;
+            const foodRatio = m.revenue > 0 ? (m.foodCost / m.revenue * 100) : 0;
+            const flRatio = laborRatio + foodRatio;
+            return `
+                        <tr>
+                            <td style="${tableCellStyleCenter}">${m.month}</td>
+                            <td style="${tableCellStyle}">${laborRatio.toFixed(1)}%</td>
+                            <td style="${tableCellStyle}">${foodRatio.toFixed(1)}%</td>
+                            <td style="${tableCellStyle} font-weight: bold; color: ${flRatio <= 65 ? '#16a34a' : '#dc2626'};">${flRatio.toFixed(1)}%</td>
+                        </tr>
+                        `;
+        }).join('')}
+                </tbody>
+            </table>
+        `;
+    };
+
+    // 4. 총지출 대비 비중 지출 구성비 테이블
+    const generateExpenditureCompositionTable = () => {
+        return `
+            <h2 style="margin-top: 30px;">4. 총지출 대비 비중 지출 구성비</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="${tableHeaderStyle}">월 (Month)</th>
+                        <th style="${tableHeaderStyle}">총지출 (Total Exp)</th>
+                        <th style="${tableHeaderStyle}">인건비 비중 (%)</th>
+                        <th style="${tableHeaderStyle}">식자재 비중 (%)</th>
+                        <th style="${tableHeaderStyle}">기타 비용 비중 (%)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${sortedMonthlyData.map(m => {
+            const totalExp = m.expense || 1;
+            const laborShare = (m.laborCost / totalExp * 100);
+            const foodShare = (m.foodCost / totalExp * 100);
+            const otherShare = (m.otherCost / totalExp * 100); // Using calculated other cost
+
+            return `
+                        <tr>
+                            <td style="${tableCellStyleCenter}">${m.month}</td>
+                            <td style="${tableCellStyle}">${m.expense.toLocaleString()}</td>
+                            <td style="${tableCellStyle}">${laborShare.toFixed(1)}%</td>
+                            <td style="${tableCellStyle}">${foodShare.toFixed(1)}%</td>
+                            <td style="${tableCellStyle}">${otherShare.toFixed(1)}%</td>
+                        </tr>
+                        `;
+        }).join('')}
+                </tbody>
+            </table>
+        `;
+    };
+
+    // 5. 순이익 및 이익률 분석 테이블
+    const generateProfitabilityTable = () => {
+        return `
+            <h2 style="margin-top: 30px;">순이익 및 이익률 분석</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="${tableHeaderStyle}">월 (Month)</th>
+                        <th style="${tableHeaderStyle}">매출 (Revenue)</th>
+                        <th style="${tableHeaderStyle}">지출 (Expense)</th>
+                        <th style="${tableHeaderStyle}">순이익 (Net Profit)</th>
+                        <th style="${tableHeaderStyle}">이익률 (%)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${sortedMonthlyData.map(m => {
+            const net = m.revenue - m.expense;
+            const margin = m.revenue > 0 ? (net / m.revenue * 100) : 0;
+            return `
+                        <tr>
+                            <td style="${tableCellStyleCenter}">${m.month}</td>
+                            <td style="${tableCellStyle}">${m.revenue.toLocaleString()}</td>
+                            <td style="${tableCellStyle}">${m.expense.toLocaleString()}</td>
+                            <td style="${tableCellStyle} font-weight: bold; color: ${net >= 0 ? '#16a34a' : '#dc2626'};">${net.toLocaleString()}</td>
+                            <td style="${tableCellStyle} font-weight: bold;">${margin.toFixed(1)}%</td>
+                        </tr>
+                        `;
+        }).join('')}
+                     <tr style="background-color: #f0fdf4; font-weight: bold;">
+                        <td style="${tableCellStyleCenter}">전체 합계</td>
+                        <td style="${tableCellStyle}">${totalRevenue.toLocaleString()}</td>
+                        <td style="${tableCellStyle}">${totalExpense.toLocaleString()}</td>
+                        <td style="${tableCellStyle} color: ${netProfit >= 0 ? '#16a34a' : '#dc2626'};">${netProfit.toLocaleString()}</td>
+                        <td style="${tableCellStyle}">${totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : 0}%</td>
+                    </tr>
+                </tbody>
+            </table>
+        `;
+    };
+
     // HTML 생성
     const generateReportHTML = () => {
         return `
@@ -300,7 +526,7 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
         * { box-sizing: border-box; }
         body { font-family: 'Pretendard', 'Malgun Gothic', sans-serif; font-size: 10pt; line-height: 1.5; color: #1f2937; margin: 0; padding: 0; }
         h1 { font-size: 18pt; font-weight: 800; color: #111827; margin: 0 0 10px 0; border-bottom: 3px solid #0f172a; padding-bottom: 8px; }
-        h2 { font-size: 14pt; font-weight: 700; color: #1e293b; margin: 20px 0 10px 0; padding-left: 8px; border-left: 4px solid #3b82f6; }
+        h2 { font-size: 14pt; font-weight: 700; color: #1e293b; margin: 20px 0 10px 0; padding-left: 8px; border-left: 4px solid #2f5d62; }
         h3 { font-size: 11pt; font-weight: 600; color: #374151; margin: 15px 0 5px 0; }
         table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 9pt; }
         th, td { border: 1px solid #e2e8f0; padding: 6px 8px; text-align: left; color: #334155; }
@@ -364,6 +590,11 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
             </div>
         </div>
 
+        <div style="margin-top: 40px;">
+            <h2 style="margin-bottom: 20px;">[ ${formattedDateRange} 코스타푸드 매출/지출 ]</h2>
+            ${generateDetailedBreakdown()}
+        </div>
+
         <h2 style="margin-top: 40px;">💡 CFO 경영 인사이트</h2>
         <div class="insight-box">
             <h3 style="margin: 0 0 10px 0;">✅ 경영 상태 진단</h3>
@@ -377,8 +608,20 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
     </div>
     <div class="footer">페이지 1 / ${totalPages}</div>
     <div class="page-break"></div>
+    
+    <!-- 페이지 2: 상세 효율 분석 -->
+    <h1>📊 상세 효율 분석</h1>
+    
+    ${generateCostEfficiencyTable()}
+    
+    ${generateExpenditureCompositionTable()}
+    
+    ${generateProfitabilityTable()}
+    
+    <div class="footer">페이지 2 / ${totalPages}</div>
+    <div class="page-break"></div>
 
-    <!-- 페이지 2: 트렌드 및 요일 분석 -->
+    <!-- 페이지 3: 트렌드 및 요일 분석 -->
     <h1>📈 매출 패턴 심층 분석</h1>
     
     <h2>1. 일별 매출/지출 추이 (최근 10일)</h2>
@@ -406,10 +649,10 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
         </div>
     </div>
 
-    <div class="footer">페이지 2 / ${totalPages}</div>
+    <div class="footer">페이지 3 / ${totalPages}</div>
     <div class="page-break"></div>
 
-    <!-- 페이지 3: 거래처별 매출 -->
+    <!-- 페이지 4: 거래처별 매출 -->
     <h1>💰 거래처별 매출 기여도 분석</h1>
     
     <div class="insight-box">
@@ -444,10 +687,10 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
         </tbody>
     </table>
 
-    <div class="footer">페이지 3 / ${totalPages}</div>
+    <div class="footer">페이지 4 / ${totalPages}</div>
     <div class="page-break"></div>
 
-    <!-- 페이지 4: 거래처별 지출 -->
+    <!-- 페이지 5: 거래처별 지출 -->
     <h1>💸 지출처별 비용 상세 분석</h1>
     
     <div class="warning-box">
@@ -482,49 +725,20 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
         </tbody>
     </table>
 
-    <div class="footer">페이지 4 / ${totalPages}</div>
+    <div class="footer">페이지 5 / ${totalPages}</div>
     <div class="page-break"></div>
 
-    <!-- 페이지 5: 카테고리별 지출 -->
-    <h1>📊 항목별(계정별) 지출 분석</h1>
+    <!-- 페이지 6: 카테고리별 지출 및 비용 구조 -->
+    <h1>📊 항목별(계정별) 비용 분석</h1>
     
     <h2>1. 항목별 지출 비중</h2>
     <div class="chart-container">
         ${generateBarChart(categoryExpenses, totalExpense, '#3b82f6', 15)}
     </div>
 
-    <h2>2. 항목별 세부 내역</h2>
-    <table>
-        <thead>
-            <tr>
-                <th style="width: 60px; text-align: center;">순위</th>
-                <th>계정 과목</th>
-                <th style="text-align: right;">금액 (원)</th>
-                <th style="text-align: right;">비중 (%)</th>
-            </tr>
-        </thead>
-        <tbody>
-            ${categoryExpenses.map((item, idx) => `
-            <tr>
-                <td style="text-align: center;">${idx + 1}</td>
-                <td><strong>${item.name}</strong></td>
-                <td style="text-align: right; font-weight: bold; color: #2563eb;">${item.value.toLocaleString()}</td>
-                <td style="text-align: right;">${totalExpense > 0 ? ((item.value / totalExpense) * 100).toFixed(1) : 0}%</td>
-            </tr>
-            `).join('')}
-        </tbody>
-    </table>
-
-    <div class="footer">페이지 5 / ${totalPages}</div>
-    <div class="page-break"></div>
-
-    <!-- 페이지 6: 비용 구조 분석 -->
-    <h1>🔍 고정비/변동비 Cost Structure 분석</h1>
-    <p style="color: #64748b; margin-bottom: 20px;">매출 증감에 따른 이익 변화를 예측하기 위해 비용의 성격을 분석합니다.</p>
-    
+    <h2>2. 비용 구조 분석</h2>
     <div style="display: flex; gap: 20px; align-items: flex-start; margin: 30px 0;">
         <div style="flex: 1;">
-            <h2>1. 비용 구조 차트</h2>
             <div class="chart-container">
                 ${generatePieChart([
             { name: '변동비', value: variableCost, color: '#1d4ed8' }, // deep blue
