@@ -1,4 +1,5 @@
-import { X, Copy, FileText, Download } from 'lucide-react';
+import { useState } from 'react';
+import { X, Copy, FileText, Download, ArrowLeft } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -18,6 +19,8 @@ export function DetailModal({ isOpen, onClose, title, data, totalAmount, dateRan
 
     // 날짜 오름차순 정렬 (과거 -> 최신)
     const sortedData = [...data].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    const [showPreview, setShowPreview] = useState(false);
 
     const copyToClipboard = () => {
         const header = ['날짜', '거래처', '구분', '금액', '결제수단', '세부내용'].join('\t');
@@ -174,58 +177,134 @@ export function DetailModal({ isOpen, onClose, title, data, totalAmount, dateRan
                     </button>
                 </div>
 
-                {/* 표 영역 (구글 시트 스타일 - 다크) */}
-                <div className="flex-1 overflow-auto bg-slate-900 customize-scrollbar">
-                    <table className="w-full text-left border-collapse table-fixed min-w-[1000px]">
-                        <thead className="sticky top-0 z-10 shadow-sm shadow-black/20">
-                            <tr className="bg-slate-800 border-b border-slate-700 text-[12px] text-slate-400 font-bold">
-                                <th className="px-4 py-2 border-r border-slate-700 w-[120px]">날짜</th>
-                                <th className="px-4 py-2 border-r border-slate-700 w-[180px]">거래처</th>
-                                <th className="px-4 py-2 border-r border-slate-700 w-[120px]">구분</th>
-                                <th className="px-4 py-2 border-r border-slate-700 w-[150px] text-right">금액</th>
-                                <th className="px-4 py-2 border-r border-slate-700 w-[150px]">결제수단</th>
-                                <th className="px-4 py-2">세부내용</th>
-                            </tr>
-                        </thead>
-                        <tbody className="text-[13px] text-slate-300 font-medium">
-                            {sortedData.map((row, idx) => {
-                                const amount = row.revenue > 0 ? row.revenue : row.expense;
-                                const type = row.category || (row.revenue > 0 ? '매출' : '지출');
+                {/* 표 영역 (조건부 렌더링) */}
+                {showPreview ? (
+                    <div className="flex-1 overflow-auto bg-slate-800/50 p-8 flex justify-center customize-scrollbar">
+                        <div className="bg-white text-slate-900 w-[210mm] min-h-[297mm] p-[15mm] shadow-xl relative animate-in fade-in duration-300">
+                            {/* 미리보기 상단 액션 버튼 */}
+                            <div className="absolute top-4 right-4 flex gap-2 print:hidden">
+                                <button
+                                    onClick={exportToPDF}
+                                    className="flex items-center gap-2 px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white rounded text-xs font-bold shadow-sm transition-all"
+                                >
+                                    <Download size={14} />
+                                    PDF 파일
+                                </button>
+                                <button
+                                    onClick={() => setShowPreview(false)}
+                                    className="flex items-center gap-2 px-3 py-1.5 bg-slate-600 hover:bg-slate-500 text-white rounded text-xs font-bold shadow-sm transition-all"
+                                >
+                                    <ArrowLeft size={14} />
+                                    목록으로
+                                </button>
+                            </div>
 
-                                // 월 변경 감지 로직
-                                const rowMonth = row.date.substring(0, 7); // "YYYY-MM"
-                                if (currentMonth !== rowMonth) {
-                                    currentMonth = rowMonth;
-                                    isLightBg = !isLightBg;
-                                }
+                            {/* PDF 미리보기 내용 */}
+                            <div className="flex flex-col gap-4">
+                                <div className="border-b-2 border-slate-800 pb-4 mb-2">
+                                    <h1 className="text-2xl font-bold text-slate-900">{title}</h1>
+                                    <div className="flex justify-between items-end mt-4 text-sm text-slate-600">
+                                        <div>
+                                            <p><span className="font-semibold">기간:</span> {dateRange || '-'}</p>
+                                            <p className="mt-1"><span className="font-semibold">출력일:</span> {new Date().toLocaleDateString()}</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p>총 {data.length.toLocaleString()}건</p>
+                                            <p className="font-bold text-lg text-slate-900">합계: {totalAmount.toLocaleString()}원</p>
+                                        </div>
+                                    </div>
+                                </div>
 
-                                return (
-                                    <tr
-                                        key={idx}
-                                        className={`border-b border-slate-800 hover:bg-blue-900/20 transition-colors ${isLightBg ? 'bg-slate-900' : 'bg-slate-800/30'
-                                            }`}
-                                    >
-                                        <td className="px-4 py-1.5 border-r border-slate-800 font-mono text-slate-500">{row.date}</td>
-                                        <td className="px-4 py-1.5 border-r border-slate-800 truncate font-semibold text-slate-200" title={row.client}>{row.client || '-'}</td>
-                                        <td className="px-4 py-1.5 border-r border-slate-800">
-                                            <span className={`${row.revenue > 0 ? 'text-blue-400' : 'text-rose-400'
-                                                }`}>
-                                                {type}
-                                            </span>
-                                        </td>
-                                        <td className="px-4 py-1.5 border-r border-slate-800 text-right font-bold tabular-nums text-slate-200">
-                                            {amount.toLocaleString()}
-                                        </td>
-                                        <td className="px-4 py-1.5 border-r border-slate-800 text-slate-500 text-xs">{row.paymentMethod || '-'}</td>
-                                        <td className="px-4 py-1.5 truncate text-slate-400" title={row.memo}>{row.memo || '-'}</td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
+                                <table className="w-full text-left border-collapse text-xs">
+                                    <thead>
+                                        <tr className="bg-slate-100 border-b border-slate-300 text-slate-700">
+                                            <th className="px-2 py-2 font-bold w-[12%]">날짜</th>
+                                            <th className="px-2 py-2 font-bold w-[18%]">거래처</th>
+                                            <th className="px-2 py-2 font-bold w-[12%]">구분</th>
+                                            <th className="px-2 py-2 font-bold w-[15%] text-right">금액</th>
+                                            <th className="px-2 py-2 font-bold w-[15%] text-center">결제수단</th>
+                                            <th className="px-2 py-2 font-bold">세부내용</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="text-slate-600">
+                                        {sortedData.map((row, idx) => {
+                                            const amount = row.revenue > 0 ? row.revenue : row.expense;
+                                            const type = row.category || (row.revenue > 0 ? '매출' : '지출');
+                                            return (
+                                                <tr key={idx} className="border-b border-slate-200 hover:bg-slate-50">
+                                                    <td className="px-2 py-1.5">{row.date}</td>
+                                                    <td className="px-2 py-1.5 truncate">{row.client || '-'}</td>
+                                                    <td className="px-2 py-1.5">{type}</td>
+                                                    <td className="px-2 py-1.5 text-right font-medium">{amount.toLocaleString()}</td>
+                                                    <td className="px-2 py-1.5 text-center">{row.paymentMethod || '-'}</td>
+                                                    <td className="px-2 py-1.5 truncate text-slate-500">{row.memo || '-'}</td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
 
-                {/* 푸터 (압축형) */}
+                                <div className="mt-8 text-center text-xs text-slate-400 border-t border-slate-200 pt-4">
+                                    <p>위 내용은 사실과 다름없음을 확인합니다.</p>
+                                    <p className="mt-1">Generated by AntiGravity</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                ) : (
+                    /* 기존 리스트 뷰 */
+                    <div className="flex-1 overflow-auto bg-slate-900 customize-scrollbar">
+                        <table className="w-full text-left border-collapse table-fixed min-w-[1000px]">
+                            <thead className="sticky top-0 z-10 shadow-sm shadow-black/20">
+                                <tr className="bg-slate-800 border-b border-slate-700 text-[12px] text-slate-400 font-bold">
+                                    <th className="px-4 py-2 border-r border-slate-700 w-[120px]">날짜</th>
+                                    <th className="px-4 py-2 border-r border-slate-700 w-[180px]">거래처</th>
+                                    <th className="px-4 py-2 border-r border-slate-700 w-[120px]">구분</th>
+                                    <th className="px-4 py-2 border-r border-slate-700 w-[150px] text-right">금액</th>
+                                    <th className="px-4 py-2 border-r border-slate-700 w-[150px]">결제수단</th>
+                                    <th className="px-4 py-2">세부내용</th>
+                                </tr>
+                            </thead>
+                            <tbody className="text-[13px] text-slate-300 font-medium">
+                                {sortedData.map((row, idx) => {
+                                    const amount = row.revenue > 0 ? row.revenue : row.expense;
+                                    const type = row.category || (row.revenue > 0 ? '매출' : '지출');
+
+                                    // 월 변경 감지 로직
+                                    const rowMonth = row.date.substring(0, 7); // "YYYY-MM"
+                                    if (currentMonth !== rowMonth) {
+                                        currentMonth = rowMonth;
+                                        isLightBg = !isLightBg;
+                                    }
+
+                                    return (
+                                        <tr
+                                            key={idx}
+                                            className={`border-b border-slate-800 hover:bg-blue-900/20 transition-colors ${isLightBg ? 'bg-slate-900' : 'bg-slate-800/30'
+                                                }`}
+                                        >
+                                            <td className="px-4 py-1.5 border-r border-slate-800 font-mono text-slate-500">{row.date}</td>
+                                            <td className="px-4 py-1.5 border-r border-slate-800 truncate font-semibold text-slate-200" title={row.client}>{row.client || '-'}</td>
+                                            <td className="px-4 py-1.5 border-r border-slate-800">
+                                                <span className={`${row.revenue > 0 ? 'text-blue-400' : 'text-rose-400'
+                                                    }`}>
+                                                    {type}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-1.5 border-r border-slate-800 text-right font-bold tabular-nums text-slate-200">
+                                                {amount.toLocaleString()}
+                                            </td>
+                                            <td className="px-4 py-1.5 border-r border-slate-800 text-slate-500 text-xs">{row.paymentMethod || '-'}</td>
+                                            <td className="px-4 py-1.5 truncate text-slate-400" title={row.memo}>{row.memo || '-'}</td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+
+                {/* 푸터 (압축형) - 리스트 뷰일 때만 버튼 표시 */}
                 <div className="px-6 py-3 border-t border-slate-700 bg-slate-800 flex items-center justify-between shrink-0">
                     <div className="flex items-center gap-4 text-sm">
                         <div className="flex items-center gap-1">
@@ -238,20 +317,24 @@ export function DetailModal({ isOpen, onClose, title, data, totalAmount, dateRan
                         </div>
                     </div>
                     <div className="flex gap-2">
-                        <button
-                            onClick={exportToPDF}
-                            className="flex items-center gap-2 px-4 py-1.5 bg-orange-600 border border-orange-500 hover:bg-orange-500 text-white rounded text-sm font-bold shadow-sm transition-all"
-                        >
-                            <Download size={16} />
-                            PDF 저장
-                        </button>
-                        <button
-                            onClick={copyToClipboard}
-                            className="flex items-center gap-2 px-4 py-1.5 bg-slate-700 border border-slate-600 hover:bg-slate-600 text-slate-200 rounded text-sm font-bold shadow-sm transition-all"
-                        >
-                            <Copy size={16} />
-                            엑셀로 복사
-                        </button>
+                        {!showPreview && (
+                            <>
+                                <button
+                                    onClick={() => setShowPreview(true)}
+                                    className="flex items-center gap-2 px-4 py-1.5 bg-orange-600 border border-orange-500 hover:bg-orange-500 text-white rounded text-sm font-bold shadow-sm transition-all"
+                                >
+                                    <FileText size={16} />
+                                    미리보기/저장
+                                </button>
+                                <button
+                                    onClick={copyToClipboard}
+                                    className="flex items-center gap-2 px-4 py-1.5 bg-slate-700 border border-slate-600 hover:bg-slate-600 text-slate-200 rounded text-sm font-bold shadow-sm transition-all"
+                                >
+                                    <Copy size={16} />
+                                    엑셀로 복사
+                                </button>
+                            </>
+                        )}
                         <button
                             onClick={onClose}
                             className="px-6 py-1.5 bg-slate-950 hover:bg-black text-white rounded text-sm font-bold shadow-sm border border-slate-800 transition-all"
