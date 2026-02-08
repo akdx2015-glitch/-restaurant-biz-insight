@@ -16,8 +16,9 @@ import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, Width
 import { saveAs } from 'file-saver';
 
 import { CATEGORY_RULES, findCategory, getCostType } from '../utils/costUtils';
-// import jsPDF from 'jspdf'; // 동적 임포트 사용으로 제거
-// import autoTable from 'jspdf-autotable'; // 동적 임포트 사용으로 제거
+
+import jsPDF from 'jspdf'; // Import jsPDF
+
 
 interface DashboardProps {
     data: RevenueData[];
@@ -568,6 +569,47 @@ export function Dashboard({ data, startDate, endDate, ingredientData }: Dashboar
                     const sortedExpense = Object.entries(expenseByCategory).sort((a, b) => b[1] - a[1]);
 
                     // 2. 핸들러 함수들
+                    const handlePdfDownload = async () => {
+                        const input = document.getElementById('preview-doc');
+                        if (!input) {
+                            alert('PDF 저장할 문서를 찾을 수 없습니다.');
+                            return;
+                        }
+
+                        try {
+                            // 버튼 숨기기 (이미 print:hidden 클래스가 있지만 html2canvas 캡처 시 확실히 하기 위함)
+                            const btns = input.querySelectorAll('button');
+                            btns.forEach(btn => (btn as HTMLElement).style.display = 'none');
+
+                            const canvas = await html2canvas(input, {
+                                scale: 2, // 고화질
+                                useCORS: true,
+                                logging: false,
+                                backgroundColor: '#ffffff'
+                            });
+
+                            // 버튼 다시 보이기
+                            btns.forEach(btn => (btn as HTMLElement).style.display = 'flex');
+
+                            const imgData = canvas.toDataURL('image/png');
+                            const pdf = new jsPDF('p', 'mm', 'a4');
+                            const imgProps = pdf.getImageProperties(imgData);
+                            const pdfWidth = pdf.internal.pageSize.getWidth();
+                            const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+                            pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+                            pdf.save(`${year}년_${month}월_코스타푸드_매출지출요약.pdf`);
+                            alert('PDF 파일이 저장되었습니다.');
+
+                        } catch (error) {
+                            console.error('PDF 생성 오류:', error);
+                            alert('PDF 파일 생성 중 오류가 발생했습니다.');
+                            // 에러 발생 시 버튼 복구
+                            const btns = input.querySelectorAll('button');
+                            btns.forEach(btn => (btn as HTMLElement).style.display = 'flex');
+                        }
+                    };
+
                     const handleWordDownload = async () => {
                         try {
                             const doc = new Document({
@@ -694,15 +736,22 @@ ${sortedExpense.map(([c, a]) => `${c}\t${a.toLocaleString()}원`).join('\n')}
                                         {/* Preview Area */}
                                         <div className="flex-1 overflow-auto bg-slate-800/50 p-8 customize-scrollbar block">
                                             {/* A4 Paper */}
-                                            <div className="mx-auto bg-white text-slate-900 w-[210mm] min-h-[297mm] p-[20mm] shadow-xl relative animate-in fade-in duration-300 mb-8">
+                                            <div id="preview-doc" className="mx-auto bg-white text-slate-900 w-[210mm] min-h-[297mm] p-[20mm] shadow-xl relative animate-in fade-in duration-300 mb-8">
 
                                                 {/* Action Buttons (Top Right inside paper) */}
                                                 <div className="absolute top-8 right-8 flex gap-2 print:hidden">
                                                     <button
+                                                        onClick={handlePdfDownload}
+                                                        className="flex items-center gap-2 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-bold shadow-sm transition-all shadow-red-200"
+                                                    >
+                                                        <Download size={14} />
+                                                        PDF 저장
+                                                    </button>
+                                                    <button
                                                         onClick={handleWordDownload}
                                                         className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold shadow-sm transition-all shadow-blue-200"
                                                     >
-                                                        <Download size={14} />
+                                                        <FileText size={14} />
                                                         Word 다운로드
                                                     </button>
                                                     <button
