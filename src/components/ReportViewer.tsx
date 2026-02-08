@@ -777,12 +777,42 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
             return;
         }
 
+        // 팝업 차단 방지를 위해 미리 창을 엽니다.
+        const newWindow = window.open('', '_blank');
+        if (!newWindow) {
+            alert('팝업 차단이 설정되어 있습니다. 팝업 차단을 해제하고 다시 시도해주세요.');
+            return;
+        }
+
+        // 로딩 메시지 표시
+        newWindow.document.write(`
+            <html>
+                <head>
+                    <title>PDF 생성 중...</title>
+                    <style>
+                        body { display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; font-family: sans-serif; background-color: #f8fafc; color: #334155; }
+                        .loader { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 15px; }
+                        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+                        .content { text-align: center; }
+                    </style>
+                </head>
+                <body>
+                    <div class="content">
+                        <div class="loader" style="margin: 0 auto 15px auto;"></div>
+                        <h2>PDF 문서를 생성하고 있습니다...</h2>
+                        <p>페이지 수에 따라 수 초가 소요될 수 있습니다.</p>
+                    </div>
+                </body>
+            </html>
+        `);
+
         setIsGenerating(true);
         const originalPage = currentPage;
 
         try {
             const reportElement = document.querySelector('[data-page-content]') as HTMLElement;
             if (!reportElement) {
+                newWindow.close();
                 alert('보고서 요소를 찾을 수 없습니다.');
                 setIsGenerating(false);
                 return;
@@ -818,10 +848,13 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
 
             // PDF 미리보기 (새 창에서 열기)
             const pdfBlobUrl = pdf.output('bloburl');
-            window.open(pdfBlobUrl, '_blank');
+            if (newWindow) {
+                newWindow.location.href = pdfBlobUrl.toString();
+            }
 
         } catch (err) {
             console.error('PDF 생성 실패:', err);
+            newWindow?.close();
             alert('PDF 미리보기 생성 중 오류가 발생했습니다.');
         } finally {
             setIsGenerating(false);
