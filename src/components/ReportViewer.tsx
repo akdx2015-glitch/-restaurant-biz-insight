@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X, Copy, RefreshCw, FileText, ChevronRight, ChevronLeft, Download } from 'lucide-react';
 import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 import type { RevenueData } from '../types';
 import { getCostType } from '../utils/costUtils';
 
@@ -769,9 +770,62 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
         `.trim();
     };
 
-    // 옵션 1: PDF 다운로드
-    const downloadPDF = () => {
-        window.print();
+    // 옵션 1: PDF 미리보기 (기존 다운로드 대체)
+    const handlePdfPreview = async () => {
+        if (!data || data.length === 0) {
+            alert('데이터가 없습니다.');
+            return;
+        }
+
+        setIsGenerating(true);
+        const originalPage = currentPage;
+
+        try {
+            const reportElement = document.querySelector('[data-page-content]') as HTMLElement;
+            if (!reportElement) {
+                alert('보고서 요소를 찾을 수 없습니다.');
+                setIsGenerating(false);
+                return;
+            }
+
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = pdf.internal.pageSize.getHeight();
+
+            // 전체 페이지 순회하며 캡처
+            for (let i = 1; i <= totalPages; i++) {
+                setCurrentPage(i);
+                // 렌더링 대기
+                await new Promise(resolve => setTimeout(resolve, 500));
+
+                const canvas = await html2canvas(reportElement, {
+                    scale: 2,
+                    backgroundColor: '#ffffff',
+                    logging: false,
+                    useCORS: true
+                });
+
+                const imgData = canvas.toDataURL('image/png');
+                const imgProps = pdf.getImageProperties(imgData);
+                const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+                if (i > 1) pdf.addPage();
+                pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, imgHeight);
+            }
+
+            // 원래 페이지로 복귀
+            setCurrentPage(originalPage);
+
+            // PDF 미리보기 (새 창에서 열기)
+            const pdfBlobUrl = pdf.output('bloburl');
+            window.open(pdfBlobUrl, '_blank');
+
+        } catch (err) {
+            console.error('PDF 생성 실패:', err);
+            alert('PDF 미리보기 생성 중 오류가 발생했습니다.');
+        } finally {
+            setIsGenerating(false);
+        }
     };
 
     // 옵션 2: Word 파일로 저장
@@ -941,12 +995,12 @@ export function ReportViewer({ isOpen, onClose, data, dateRange }: ReportViewerP
                             다시 생성
                         </button>
                         <button
-                            onClick={downloadPDF}
+                            onClick={handlePdfPreview}
                             className="flex items-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded font-bold shadow-lg transition-all text-sm"
-                            title="PDF로 다운로드 (인쇄)"
+                            title="PDF 미리보기 및 인쇄"
                         >
                             <FileText size={14} />
-                            PDF
+                            PDF 미리보기
                         </button>
                         <button
                             onClick={downloadWord}

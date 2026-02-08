@@ -569,7 +569,7 @@ export function Dashboard({ data, startDate, endDate, ingredientData }: Dashboar
                     const sortedExpense = Object.entries(expenseByCategory).sort((a, b) => b[1] - a[1]);
 
                     // 2. 핸들러 함수들
-                    const handlePdfDownload = async () => {
+                    const handlePdfPreview = async () => {
                         const input = document.getElementById('preview-doc');
                         if (!input) {
                             alert('PDF 저장할 문서를 찾을 수 없습니다.');
@@ -598,12 +598,14 @@ export function Dashboard({ data, startDate, endDate, ingredientData }: Dashboar
                             const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
 
                             pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-                            pdf.save(`${year}년_${month}월_코스타푸드_매출지출요약.pdf`);
-                            alert('PDF 파일이 저장되었습니다.');
+
+                            // PDF 미리보기 (새 창에서 열기)
+                            const pdfBlobUrl = pdf.output('bloburl');
+                            window.open(pdfBlobUrl, '_blank');
 
                         } catch (error) {
                             console.error('PDF 생성 오류:', error);
-                            alert('PDF 파일 생성 중 오류가 발생했습니다.');
+                            alert('PDF 미리보기 생성 중 오류가 발생했습니다.');
                             // 에러 발생 시 버튼 복구
                             const btns = input.querySelectorAll('button');
                             btns.forEach(btn => (btn as HTMLElement).style.display = 'flex');
@@ -741,11 +743,11 @@ ${sortedExpense.map(([c, a]) => `${c}\t${a.toLocaleString()}원`).join('\n')}
                                                 {/* Action Buttons (Top Right inside paper) */}
                                                 <div className="absolute top-8 right-8 flex gap-2 print:hidden">
                                                     <button
-                                                        onClick={handlePdfDownload}
+                                                        onClick={handlePdfPreview}
                                                         className="flex items-center gap-2 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-bold shadow-sm transition-all shadow-red-200"
                                                     >
                                                         <Download size={14} />
-                                                        PDF 저장
+                                                        PDF 미리보기
                                                     </button>
                                                     <button
                                                         onClick={handleWordDownload}
