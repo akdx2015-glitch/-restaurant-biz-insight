@@ -179,9 +179,9 @@ export function DetailModal({ isOpen, onClose, title, data, totalAmount, dateRan
 
                 {/* 표 영역 (조건부 렌더링) */}
                 {showPreview ? (
-                    <div className="flex-1 overflow-auto bg-slate-800/50 p-8 flex justify-center customize-scrollbar">
+                    <div className="flex-1 overflow-auto bg-slate-800/50 p-8 customize-scrollbar block">
                         {/* A4 가로 모드: 297mm x 210mm */}
-                        <div className="bg-white text-slate-900 w-[297mm] min-h-[210mm] p-[15mm] shadow-xl relative animate-in fade-in duration-300">
+                        <div className="mx-auto bg-white text-slate-900 w-[297mm] min-h-[210mm] p-[15mm] shadow-xl relative animate-in fade-in duration-300 mb-8">
                             {/* 미리보기 상단 액션 버튼 */}
                             <div className="absolute top-4 right-4 flex gap-2 print:hidden">
                                 <button
