@@ -42,7 +42,7 @@ export function DetailModal({ isOpen, onClose, title, data, totalAmount, dateRan
         });
     };
 
-    const exportToPDF = async () => {
+    const handlePdfPreview = async () => {
         try {
             const doc = new jsPDF('l', 'mm', 'a4');
 
@@ -122,11 +122,13 @@ export function DetailModal({ isOpen, onClose, title, data, totalAmount, dateRan
                 doc.text(`${i} / ${totalPages}`, 297 / 2, 200, { align: 'center' });
             }
 
-            doc.save(`${title.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`);
-            alert('PDF 저장이 완료되었습니다.');
+            // PDF 미리보기 (새 창에서 열기)
+            const pdfBlobUrl = doc.output('bloburl');
+            window.open(pdfBlobUrl, '_blank');
+
         } catch (error) {
             console.error('PDF Export Error:', error);
-            alert('PDF 저장 중 오류가 발생했습니다.');
+            alert('PDF 미리보기 생성 중 오류가 발생했습니다.');
         }
     };
 
@@ -185,11 +187,11 @@ export function DetailModal({ isOpen, onClose, title, data, totalAmount, dateRan
                             {/* 미리보기 상단 액션 버튼 */}
                             <div className="absolute top-4 right-4 flex gap-2 print:hidden">
                                 <button
-                                    onClick={exportToPDF}
+                                    onClick={handlePdfPreview}
                                     className="flex items-center gap-2 px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white rounded text-xs font-bold shadow-sm transition-all"
                                 >
                                     <Download size={14} />
-                                    PDF 파일
+                                    PDF 미리보기
                                 </button>
                                 <button
                                     onClick={() => setShowPreview(false)}
