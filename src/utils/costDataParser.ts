@@ -293,7 +293,7 @@ export const convertIngredientToCostPurchase = (data: IngredientData[]): CostPur
             거래처: item.vendor || '기타',
             대분류: majorCategory,
             중분류: item.category, // 원래 카테고리를 중분류로 활용
-            소분류: item.category,
+            소분류: item.subCategory || item.category, // 소분류가 있으면 우선 사용
             품명: item.name,
             규격: 'N/A', // 정보 없음
             수량: item.quantity,

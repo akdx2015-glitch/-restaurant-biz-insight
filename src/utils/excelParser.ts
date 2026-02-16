@@ -12,7 +12,7 @@ const safeParseFloat = (val: any): number => {
 };
 
 // Helper to find value across multiple possible keys and improved date parsing
-const findValue = (row: any, keys: string[]): any => {
+export const findValue = (row: any, keys: string[]): any => {
     // 1. Try exact match first - MUST BE NON-EMPTY
     for (const key of keys) {
         const val = row[key];
@@ -58,7 +58,7 @@ const formatDate = (val: any): string => {
 };
 
 // Helper to find header row index
-const findHeaderRow = (rows: any[][], keywords: string[]): number => {
+export const findHeaderRow = (rows: any[][], keywords: string[]): number => {
     console.log(`Searching for header with keywords: ${keywords.join(', ')}`);
     for (let i = 0; i < Math.min(rows.length, 20); i++) {
         const rowString = JSON.stringify(rows[i]);
@@ -209,7 +209,8 @@ export const processIngredientData = (jsonData: any[]): IngredientData[] => {
             quantity,
             totalPrice,
             vendor: findValue(row, ['구매처', '거래처', '공급사', 'Vendor', 'Supplier', 'Source']) || '',
-            category: findValue(row, ['분류', '카테고리', '구분', 'Category', 'Type']) || '기타',
+            category: findValue(row, ['분류', '카테고리', '구분', 'Category', 'Type', '대분류']) || '기타',
+            subCategory: findValue(row, ['소분류', 'Sub Category', 'SubCategory', 'Detail', '세부분류', '상세분류', '품목분류']) || '',
             date: formatDate(rawDate) || new Date().toISOString().split('T')[0]
         };
     }).filter(item => item.totalPrice > 0 || item.quantity > 0 || item.name !== 'Unknown Ingredient');

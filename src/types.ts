@@ -19,6 +19,7 @@ export interface IngredientData {
     totalPrice: number;
     vendor: string;
     category: '채소' | '육류' | '해산물' | '공산품' | '주류/음료' | '기타';
+    subCategory?: string; // 소분류 (e.g. "일대일", "공산품", "세제" etc.)
     date: string;
 }
 

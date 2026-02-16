@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { FileBarChart, Copy, RefreshCw, Calendar, ListFilter, Briefcase, FileDown } from 'lucide-react';
+import { FileBarChart, Copy, RefreshCw, Calendar, ListFilter, Briefcase, FileDown, Search } from 'lucide-react';
+import { ItemDetailModal } from './ItemDetailModal';
 import type { CostPurchaseData, IngredientData } from '../types';
 import { exportToJsxWord } from '../utils/docxGenerator';
 import {
@@ -35,6 +36,25 @@ export function CostReportGenerator({ startDate, endDate, ingredientData }: Cost
     const [report, setReport] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+
+    const [detailModalState, setDetailModalState] = useState<{ isOpen: boolean; itemName: string; data: CostPurchaseData[] }>({
+        isOpen: false, itemName: '', data: []
+    });
+
+    const openItemDetail = (itemName: string) => {
+        // 품목명 정규화 (공백 제거 등) 비교가 필요할 수 있으나, 일단 정확한 품명으로 필터링
+        // 보고서의 품명은 데이터의 품명 그대로 출력되므로 exact match 사용
+        const targetName = itemName.trim();
+        const relevantData = costData.filter(d => d.품명 === targetName);
+
+        if (relevantData.length === 0) {
+            // 시도: 포함된 문자열로 검색 (혹시 모를 공백 이슈 대응)
+            const fallbackData = costData.filter(d => d.품명.includes(targetName) || targetName.includes(d.품명));
+            setDetailModalState({ isOpen: true, itemName: targetName, data: fallbackData });
+        } else {
+            setDetailModalState({ isOpen: true, itemName: targetName, data: relevantData });
+        }
+    };
 
 
 
@@ -563,11 +583,25 @@ ${vendors.slice(0, 5).map((v, idx) =>
                                                         <tbody>
                                                             {rows.map((row, rIdx) => (
                                                                 <tr key={rIdx} className="border-b border-slate-800 last:border-b-0 hover:bg-slate-800/50">
-                                                                    {row.map((cell, cIdx) => (
-                                                                        <td key={cIdx} className="p-1.5 text-slate-300 border-r border-slate-800 last:border-r-0">
-                                                                            {cell}
-                                                                        </td>
-                                                                    ))}
+                                                                    {row.map((cell, cIdx) => {
+                                                                        const isItemName = cleanHeaders[cIdx] === '품목명';
+                                                                        return (
+                                                                            <td key={cIdx} className="p-1.5 text-slate-300 border-r border-slate-800 last:border-r-0 group">
+                                                                                <div className="flex items-center gap-2">
+                                                                                    <span>{cell}</span>
+                                                                                    {isItemName && (
+                                                                                        <button
+                                                                                            onClick={() => openItemDetail(cell)}
+                                                                                            className="opacity-0 group-hover:opacity-100 p-1 bg-slate-700 hover:bg-blue-600 rounded text-white transition-all shadow-sm"
+                                                                                            title="상세 내역 보기"
+                                                                                        >
+                                                                                            <Search size={12} />
+                                                                                        </button>
+                                                                                    )}
+                                                                                </div>
+                                                                            </td>
+                                                                        );
+                                                                    })}
                                                                 </tr>
                                                             ))}
                                                         </tbody>
@@ -620,8 +654,12 @@ ${vendors.slice(0, 5).map((v, idx) =>
                     </div>
                 )
             }
-        </div >
+            <ItemDetailModal
+                isOpen={detailModalState.isOpen}
+                onClose={() => setDetailModalState(prev => ({ ...prev, isOpen: false }))}
+                itemName={detailModalState.itemName}
+                data={detailModalState.data}
+            />
+        </div>
     );
 }
-
-
