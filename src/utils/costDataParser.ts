@@ -144,6 +144,10 @@ export const classifyByCostType = (item: CostPurchaseData): 'FOOD' | 'SUPPLY' | 
         return 'SUPPLY';
     }
 
+    if (category === '시설투자') {
+        return 'OTHER';
+    }
+
     return 'OTHER';
 };
 
@@ -261,30 +265,50 @@ export const getAvailableMonths = (data: CostPurchaseData[]): string[] => {
  */
 export const convertIngredientToCostPurchase = (data: IngredientData[]): CostPurchaseData[] => {
     return data.map(item => {
-        let majorCategory: '식자재' | '생활용품' | '운용용품' | '반려동물' | '기타' | '차량용품' = '식자재';
+        let majorCategory: '식자재' | '생활용품' | '운용용품' | '반려동물' | '기타' | '차량용품' | '시설투자' = '식자재';
 
         // 카테고리 매핑 (개선됨: 품명 + 카테고리 모두 검색)
         const category = item.category || '';
         const name = item.name || '';
 
-        // 검색 대상 문자열 (카테고리 + 품명)
-        const targetString = `${category} ${name}`;
+        // 검색 대상 문자열 (카테고리 + 품명 + 소분류)
+        const subCategory = item.subCategory || '';
+        const targetString = `${category} ${name} ${subCategory}`;
 
-        const supplyKeywords = [
-            '공산품', '생활용품', '소모품', '주방용품', '잡화', '비품', '포장', '용기',
-            '세제', '위생', '타올', '티슈', '휴지', '장갑', '봉투', '호일', '랩',
-            '수세미', '부탄', '가스', '세정', '락스', '행주', '컵', '빨대', '캐리어',
-            '홀더', '유산지', '이쑤시개', '철수세미', '마스크', '앞치마', '세탁',
-            '린스', '샴푸', '비누', '치약', '칫솔', '테이프', '박스', '일회용'
-        ];
-
-        if (supplyKeywords.some(keyword => targetString.includes(keyword))) {
+        // 1. 명시적 카테고리/소분류 확인
+        if (category === '시설투자' || subCategory === '시설투자' || name.includes('시설') || name.includes('공사') || name.includes('인테리어') || name.includes('설비')) {
+            majorCategory = '시설투자';
+        } else if (category === '운용용품' || subCategory === '운용용품' || category === '소모품' || subCategory === '소모품') {
             majorCategory = '운용용품';
-        } else if (category === '기타') {
-            majorCategory = '기타';
-        } else {
-            // 채소, 육류, 해산물, 주류/음료 등은 모두 식자재로 분류
+        } else if (category === '식자재' || subCategory === '식자재') {
             majorCategory = '식자재';
+        } else {
+            // 2. 키워드 기반 분류
+            const foodKeywords = [
+                '육류', '소고기', '돼지고기', '닭고기', '채소', '야채', '과일', '식용유', '소스',
+                '파우더', '가루', '면', '쌀', '김치', '해산물', '생선', '냉동', '유제품', '우유',
+                '치즈', '계란', '음료', '주류', '커피', '원두', '빵', '베이커리', '밀가루', '설탕',
+                '소금', '조미료', '양념', '육수', '토핑', '시럽', '퓨레', '농축액', '파스타', '떡'
+            ];
+
+            const supplyKeywords = [
+                '공산품', '생활용품', '소모품', '주방용품', '잡화', '비품', '포장', '용기',
+                '세제', '위생', '타올', '티슈', '휴지', '장갑', '봉투', '호일', '랩',
+                '수세미', '부탄', '가스', '세정', '락스', '행주', '컵', '빨대', '캐리어',
+                '홀더', '유산지', '이쑤시개', '철수세미', '마스크', '앞치마', '세탁',
+                '린스', '샴푸', '비누', '치약', '칫솔', '테이프', '일회용', '종이', '플라스틱'
+            ];
+
+            if (foodKeywords.some(k => targetString.includes(k))) {
+                majorCategory = '식자재';
+            } else if (supplyKeywords.some(k => targetString.includes(k))) {
+                majorCategory = '운용용품';
+            } else if (category === '기타') {
+                majorCategory = '기타';
+            } else {
+                // 키워드에도 없고 기타도 아니면 기본값 식자재 (가장 흔함)
+                majorCategory = '식자재';
+            }
         }
 
         return {

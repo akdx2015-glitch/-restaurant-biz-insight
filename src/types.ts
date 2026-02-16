@@ -18,7 +18,7 @@ export interface IngredientData {
     quantity: number;
     totalPrice: number;
     vendor: string;
-    category: '채소' | '육류' | '해산물' | '공산품' | '주류/음료' | '기타';
+    category: '채소' | '육류' | '해산물' | '공산품' | '주류/음료' | '기타' | '식자재' | '운용용품' | '소모품' | '시설투자';
     subCategory?: string; // 소분류 (e.g. "일대일", "공산품", "세제" etc.)
     date: string;
 }
@@ -34,7 +34,7 @@ export interface CostPurchaseData {
     월: string;              // "2024-01"
     날짜: string;            // "2024-01-15"
     거래처: string;          // "쿠팡(주)", "웰스토리" 등
-    대분류: '식자재' | '생활용품' | '운용용품' | '반려동물' | '기타' | '차량용품';
+    대분류: '식자재' | '생활용품' | '운용용품' | '반려동물' | '기타' | '차량용품' | '시설투자';
     중분류?: string;         // 세부 카테고리
     소분류?: string;         // 더 세부적인 카테고리
     품명: string;            // 상품명

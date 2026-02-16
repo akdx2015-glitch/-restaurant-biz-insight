@@ -231,7 +231,6 @@ ${vendors.slice(0, 5).map((v, idx) =>
 
         // 1. 식자재만 필터링 및 소분류 그룹화
         const foodItems = filtered.filter(item => classifyByCostType(item) === 'FOOD');
-        const supplyItems = filtered.filter(item => classifyByCostType(item) === 'SUPPLY');
 
         const groupedBySubCategory = foodItems.reduce((acc, item) => {
             const subCategory = item.소분류 || '기타';
@@ -245,14 +244,13 @@ ${vendors.slice(0, 5).map((v, idx) =>
         const sortedCategories = Object.entries(groupedBySubCategory)
             .sort((a: any, b: any) => b[1].totalAmount - a[1].totalAmount);
 
-        // 2. CFO 인사이트 데이터 산출
-        const allItems = [...foodItems, ...supplyItems];
+        // 2. CFO 인사이트 데이터 산출 (식자재만 대상!!!)
         // Top 지출 (금액순)
-        const topSpending = [...allItems]
+        const topSpending = [...foodItems]
             .sort((a: any, b: any) => (b['합계금액'] || 0) - (a['합계금액'] || 0))
             .slice(0, 3);
         // Top 구매 (수량순)
-        const topFrequency = [...allItems]
+        const topFrequency = [...foodItems]
             .sort((a: any, b: any) => (b.수량 || 0) - (a.수량 || 0)) // 단순 수량 비교
             .slice(0, 3);
 
@@ -343,8 +341,8 @@ ${vendors.slice(0, 5).map((v, idx) =>
             return;
         }
 
-        // 1. 운용용품/생활용품/비품 추출 (식자재 제외)
-        const supplyItems = filtered.filter(item => classifyByCostType(item) !== 'FOOD');
+        // 1. 운용용품/생활용품/비품 추출 (식자재 제외 -> 운용용품만 포함)
+        const supplyItems = filtered.filter(item => classifyByCostType(item) === 'SUPPLY');
 
         if (supplyItems.length === 0) {
             alert('선택한 기간에 운용용품/생활용품 데이터가 없습니다.');
